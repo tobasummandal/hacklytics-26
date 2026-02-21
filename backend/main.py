@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=__file__.replace('main.py', '../.env'))
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,6 +17,7 @@ from services.rule_extraction import RuleExtractionService
 from services.inconsistency import InconsistencyDetectionService
 from services.loophole import LoopholeGeneratorService
 from services.character import CharacterTrackerService
+from services.relationships import RelationshipExtractionService
 from models.schemas import (
     World,
     InconsistencyReport,
@@ -32,6 +36,7 @@ async def lifespan(app: FastAPI):
     services['inconsistency'] = InconsistencyDetectionService(services['vectorai'])
     services['loophole'] = LoopholeGeneratorService(services['vectorai'])
     services['character'] = CharacterTrackerService(services['vectorai'])
+    services['relationships'] = RelationshipExtractionService(services['vectorai'])
     
     await services['vectorai'].connect()
     
@@ -135,6 +140,11 @@ async def process_manuscript(world_id: str, file_path: str):
             "world_id": world_id
         })
 
+        print(f"[process] extracting relationships and characters")
+        await asyncio.gather(
+            services['relationships'].extract_relationships(world_id),
+            services['character'].extract_characters_from_chunks(world_id)
+        )
         print(f"[process] detecting inconsistencies")
         inconsistencies = await services['inconsistency'].detect_inconsistencies(world_id)
         print(f"[process] done — {len(inconsistencies)} inconsistencies")
@@ -169,6 +179,11 @@ async def get_loopholes(world_id: str):
 async def get_characters(world_id: str):
     characters = await services['character'].get_all_characters(world_id)
     return characters
+
+@app.get("/worlds/{world_id}/relationships")
+async def get_relationships(world_id: str):
+    relationships = await services['relationships'].get_relationships(world_id)
+    return relationships
 
 @app.get("/worlds/{world_id}/graph", response_model=GraphData)
 async def get_world_graph(world_id: str):

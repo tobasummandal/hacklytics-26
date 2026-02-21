@@ -29,86 +29,212 @@ export default function WorldCreator({ onWorldCreated }: WorldCreatorProps) {
 
   return (
     <div className="container mx-auto px-6 py-16">
-      <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-12">
-          <div className="flex justify-center mb-4">
-            <Sparkles className="w-16 h-16 text-purple-500" />
+      <div className="max-w-3xl mx-auto">
+        <div className="mb-12">
+          <div className="flex items-center space-x-3 mb-3">
+            <Sparkles style={{ color: 'var(--color-forest)' }} className="w-10 h-10" />
+            <h2 style={{
+              fontFamily: "'Crimson Text', serif",
+              fontSize: 'clamp(2rem, 5vw, 2.75rem)',
+              fontWeight: 600,
+              color: 'var(--color-ink)',
+              letterSpacing: '0.01em'
+            }}>
+              create your world
+            </h2>
           </div>
-          <h2 className="text-4xl font-bold mb-4 gradient-text">
-            Create Your World
-          </h2>
-          <p className="text-slate-400 text-lg">
-            Start building your fictional universe with AI-powered consistency checking
+          
+          <div style={{ 
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            marginBottom: '1rem'
+          }}>
+            <span className="ornament">✦</span>
+            <div style={{
+              flex: 1,
+              height: '1px',
+              background: 'linear-gradient(to right, var(--color-gold), transparent)'
+            }} />
+          </div>
+          
+          <p style={{ 
+            color: 'var(--color-ink-light)',
+            fontSize: '1.05rem',
+            lineHeight: '1.6',
+            maxWidth: '42rem'
+          }}>
+            begin building your fictional universe with semantic consistency checking,
+            loophole detection, and character tracking powered by vector embeddings
           </p>
         </div>
 
-        <div className="bg-slate-900 rounded-lg border border-slate-800 p-8">
+        <div className="paper-card rounded-sm p-8 mb-10">
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                World Name
+              <label style={{
+                display: 'block',
+                fontSize: '0.9rem',
+                fontWeight: 500,
+                color: 'var(--color-ink)',
+                marginBottom: '0.5rem',
+                letterSpacing: '0.02em'
+              }}>
+                world name
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., The Eternal Empire"
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="the eternal empire"
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  background: 'var(--color-parchment)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '2px',
+                  color: 'var(--color-ink)',
+                  fontFamily: "'Lora', serif",
+                  fontSize: '1rem'
+                }}
+                className="focus:outline-none focus:ring-2"
+                onFocus={(e) => e.currentTarget.style.borderColor = 'var(--color-forest)'}
+                onBlur={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Description (Optional)
+              <label style={{
+                display: 'block',
+                fontSize: '0.9rem',
+                fontWeight: 500,
+                color: 'var(--color-ink)',
+                marginBottom: '0.5rem',
+                letterSpacing: '0.02em'
+              }}>
+                description <span style={{ color: 'var(--color-ink-light)', fontStyle: 'italic' }}>(optional)</span>
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="A brief description of your world..."
+                placeholder="a brief description of your world..."
                 rows={4}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  background: 'var(--color-parchment)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '2px',
+                  color: 'var(--color-ink)',
+                  fontFamily: "'Lora', serif",
+                  fontSize: '1rem',
+                  resize: 'vertical'
+                }}
+                className="focus:outline-none focus:ring-2"
+                onFocus={(e) => e.currentTarget.style.borderColor = 'var(--color-forest)'}
+                onBlur={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
               />
             </div>
 
             <button
               onClick={handleCreateWorld}
               disabled={loading || !name.trim()}
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all flex items-center justify-center space-x-2"
+              style={{
+                width: '100%',
+                padding: '0.875rem 1.5rem',
+                background: loading || !name.trim() ? 'var(--color-border)' : 'var(--color-forest)',
+                color: loading || !name.trim() ? 'var(--color-ink-light)' : 'var(--color-paper)',
+                fontWeight: 500,
+                borderRadius: '2px',
+                border: 'none',
+                cursor: loading || !name.trim() ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+                fontSize: '1rem',
+                letterSpacing: '0.02em'
+              }}
+              className="flex items-center justify-center space-x-2"
+              onMouseEnter={(e) => {
+                if (!loading && name.trim()) e.currentTarget.style.background = 'var(--color-forest-light)'
+              }}
+              onMouseLeave={(e) => {
+                if (!loading && name.trim()) e.currentTarget.style.background = 'var(--color-forest)'
+              }}
             >
               {loading ? (
-                <span>Creating...</span>
+                <span>creating...</span>
               ) : (
                 <>
                   <BookOpen className="w-5 h-5" />
-                  <span>Create World</span>
+                  <span>begin world</span>
                 </>
               )}
             </button>
           </div>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="text-center p-6 bg-slate-900/50 rounded-lg border border-slate-800">
-            <div className="text-2xl mb-2">📖</div>
-            <h3 className="font-semibold mb-2">Real-Time Ingestion</h3>
-            <p className="text-sm text-slate-400">
-              Upload manuscripts and watch rules get extracted automatically
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          marginBottom: '2rem'
+        }}>
+          <span className="ornament">✦</span>
+          <div style={{
+            flex: 1,
+            height: '1px',
+            background: 'var(--color-border)'
+          }} />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="paper-card rounded-sm p-6">
+            <div style={{ fontSize: '1.5rem', marginBottom: '0.75rem', color: 'var(--color-gold)' }}>📖</div>
+            <h3 style={{
+              fontWeight: 600,
+              marginBottom: '0.5rem',
+              color: 'var(--color-ink)',
+              fontSize: '1.05rem'
+            }}>real-time ingestion</h3>
+            <p style={{ 
+              fontSize: '0.9rem',
+              color: 'var(--color-ink-light)',
+              lineHeight: '1.5'
+            }}>
+              upload manuscripts and watch rules get extracted automatically
             </p>
           </div>
 
-          <div className="text-center p-6 bg-slate-900/50 rounded-lg border border-slate-800">
-            <div className="text-2xl mb-2">⚠️</div>
-            <h3 className="font-semibold mb-2">Inconsistency Detection</h3>
-            <p className="text-sm text-slate-400">
-              Find contradictions before they become plot holes
+          <div className="paper-card rounded-sm p-6">
+            <div style={{ fontSize: '1.5rem', marginBottom: '0.75rem', color: 'var(--color-gold)' }}>⚠️</div>
+            <h3 style={{
+              fontWeight: 600,
+              marginBottom: '0.5rem',
+              color: 'var(--color-ink)',
+              fontSize: '1.05rem'
+            }}>inconsistency detection</h3>
+            <p style={{ 
+              fontSize: '0.9rem',
+              color: 'var(--color-ink-light)',
+              lineHeight: '1.5'
+            }}>
+              find contradictions before they become plot holes
             </p>
           </div>
 
-          <div className="text-center p-6 bg-slate-900/50 rounded-lg border border-slate-800">
-            <div className="text-2xl mb-2">🗺️</div>
-            <h3 className="font-semibold mb-2">World Topology Map</h3>
-            <p className="text-sm text-slate-400">
-              Visualize connections between rules and systems
+          <div className="paper-card rounded-sm p-6">
+            <div style={{ fontSize: '1.5rem', marginBottom: '0.75rem', color: 'var(--color-gold)' }}>🗺️</div>
+            <h3 style={{
+              fontWeight: 600,
+              marginBottom: '0.5rem',
+              color: 'var(--color-ink)',
+              fontSize: '1.05rem'
+            }}>world topology map</h3>
+            <p style={{ 
+              fontSize: '0.9rem',
+              color: 'var(--color-ink-light)',
+              lineHeight: '1.5'
+            }}>
+              visualize connections between rules and systems
             </p>
           </div>
         </div>

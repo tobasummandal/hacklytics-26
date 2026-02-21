@@ -21,9 +21,10 @@ class InconsistencyDetectionService:
         inconsistencies = []
         
         for i, rule_a in enumerate(rules):
-            rule_a_vector = rule_a.get('vector', [])
-            if not rule_a_vector:
+            rule_a_text = rule_a.get('payload', {}).get('text', '')
+            if not rule_a_text:
                 continue
+            rule_a_vector = self.vectorai.generate_embeddings([rule_a_text])[0]
             
             similar_rules = await self.vectorai.search(
                 f"world_{world_id}_rules",

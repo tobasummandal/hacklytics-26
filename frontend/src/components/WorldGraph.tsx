@@ -20,11 +20,12 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
       data.nodes.map(node => ({
         id: node.id,
         label: node.label,
-        color: node.color || '#6b7280',
+        color: node.color || '#2d5016',
         size: node.size || 10,
         font: {
-          color: '#ffffff',
-          size: 12
+          color: '#2c2416',
+          size: 12,
+          face: 'Lora'
         }
       }))
     )
@@ -35,8 +36,8 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
         to: edge.to_node,
         value: edge.weight,
         color: {
-          color: '#475569',
-          highlight: '#9333ea'
+          color: '#e8e3d8',
+          highlight: '#2d5016'
         }
       }))
     )
@@ -95,8 +96,8 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <Loader className="w-12 h-12 text-purple-500 animate-spin mb-4" />
-        <p className="text-slate-400">Building world topology...</p>
+        <Loader style={{ color: 'var(--color-forest)' }} className="w-12 h-12 animate-spin mb-4" />
+        <p style={{ color: 'var(--color-ink-light)' }}>building world topology...</p>
       </div>
     )
   }
@@ -104,9 +105,13 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
   if (!data || (data.nodes.length === 0 && data.edges.length === 0)) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <NetworkIcon className="w-12 h-12 text-slate-600 mb-4" />
-        <p className="text-slate-400">No world data available yet.</p>
-        <p className="text-sm text-slate-500 mt-2">Upload a manuscript to visualize your world.</p>
+        <NetworkIcon style={{ color: 'var(--color-ink-light)' }} className="w-12 h-12 mb-4" />
+        <p style={{ color: 'var(--color-ink-light)' }}>no world data available yet.</p>
+        <p style={{ 
+          fontSize: '0.875rem',
+          color: 'var(--color-ink-light)',
+          marginTop: '0.5rem'
+        }}>upload a manuscript to visualize your world.</p>
       </div>
     )
   }
@@ -114,38 +119,78 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold">World Topology Map</h3>
-        <div className="flex space-x-4 text-xs">
+        <h3 style={{
+          fontSize: '1.25rem',
+          fontWeight: 600,
+          color: 'var(--color-ink)'
+        }}>world topology map</h3>
+        <div className="flex space-x-4" style={{ fontSize: '0.75rem' }}>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 rounded-full bg-magic"></div>
-            <span>Magic</span>
+            <div style={{
+              width: '0.75rem',
+              height: '0.75rem',
+              borderRadius: '50%',
+              background: '#8b5cf6'
+            }}></div>
+            <span style={{ color: 'var(--color-ink-light)' }}>magic</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 rounded-full bg-politics"></div>
-            <span>Politics</span>
+            <div style={{
+              width: '0.75rem',
+              height: '0.75rem',
+              borderRadius: '50%',
+              background: '#ec4899'
+            }}></div>
+            <span style={{ color: 'var(--color-ink-light)' }}>politics</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 rounded-full bg-technology"></div>
-            <span>Technology</span>
+            <div style={{
+              width: '0.75rem',
+              height: '0.75rem',
+              borderRadius: '50%',
+              background: '#06b6d4'
+            }}></div>
+            <span style={{ color: 'var(--color-ink-light)' }}>technology</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 rounded-full bg-economy"></div>
-            <span>Economy</span>
+            <div style={{
+              width: '0.75rem',
+              height: '0.75rem',
+              borderRadius: '50%',
+              background: '#f59e0b'
+            }}></div>
+            <span style={{ color: 'var(--color-ink-light)' }}>economy</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 rounded-full bg-character"></div>
-            <span>Character</span>
+            <div style={{
+              width: '0.75rem',
+              height: '0.75rem',
+              borderRadius: '50%',
+              background: 'var(--color-forest)'
+            }}></div>
+            <span style={{ color: 'var(--color-ink-light)' }}>character</span>
           </div>
         </div>
       </div>
 
       <div
         ref={containerRef}
-        className="w-full h-[600px] bg-slate-950 rounded-lg border border-slate-700"
+        style={{
+          width: '100%',
+          height: '600px',
+          background: '#f5f3ed',
+          borderRadius: '2px',
+          border: '1px solid var(--color-border)'
+        }}
       />
 
-      <div className="text-sm text-slate-400 text-center">
-        Nodes represent rules and characters. Edges show semantic proximity.
+      <div style={{
+        fontSize: '0.875rem',
+        color: 'var(--color-ink-light)',
+        textAlign: 'center',
+        fontStyle: 'italic'
+      }}>
+        nodes represent rules and characters. edges show semantic proximity.
       </div>
     </div>
   )

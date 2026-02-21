@@ -64,60 +64,146 @@ export default function Dashboard({ world, wsMessage }: DashboardProps) {
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold mb-2">{world.name}</h2>
+        <h2 style={{
+          fontFamily: "'Crimson Text', serif",
+          fontSize: '2.25rem',
+          fontWeight: 600,
+          marginBottom: '0.5rem',
+          color: 'var(--color-ink)',
+          letterSpacing: '0.01em'
+        }}>{world.name}</h2>
         {world.description && (
-          <p className="text-slate-400">{world.description}</p>
+          <p style={{ 
+            color: 'var(--color-ink-light)',
+            fontSize: '1rem',
+            fontStyle: 'italic',
+            marginBottom: '1rem'
+          }}>{world.description}</p>
         )}
         
         <div className="flex space-x-6 mt-4">
           <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-            <span className="text-sm text-slate-400">{world.rule_count} Rules</span>
+            <div style={{ 
+              width: '0.5rem',
+              height: '0.5rem',
+              borderRadius: '50%',
+              background: 'var(--color-forest)'
+            }}></div>
+            <span style={{ 
+              fontSize: '0.875rem',
+              color: 'var(--color-ink-light)'
+            }}>{world.rule_count} rules</span>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 rounded-full bg-pink-500"></div>
-            <span className="text-sm text-slate-400">{world.character_count} Characters</span>
+            <div style={{ 
+              width: '0.5rem',
+              height: '0.5rem',
+              borderRadius: '50%',
+              background: 'var(--color-gold)'
+            }}></div>
+            <span style={{ 
+              fontSize: '0.875rem',
+              color: 'var(--color-ink-light)'
+            }}>{world.character_count} characters</span>
           </div>
         </div>
       </div>
 
-      <div className="flex space-x-2 mb-6 border-b border-slate-800">
+      <div style={{ 
+        display: 'flex',
+        gap: '0.5rem',
+        marginBottom: '1.5rem',
+        borderBottom: '1px solid var(--color-border)',
+        overflowX: 'auto'
+      }}>
         <button
           onClick={() => setActiveTab('upload')}
-          className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
-            activeTab === 'upload'
-              ? 'text-purple-400 border-b-2 border-purple-400'
-              : 'text-slate-400 hover:text-slate-300'
-          }`}
+          style={{
+            padding: '0.75rem 1.5rem',
+            fontWeight: 500,
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            color: activeTab === 'upload' ? 'var(--color-forest)' : 'var(--color-ink-light)',
+            borderBottom: activeTab === 'upload' ? '2px solid var(--color-forest)' : '2px solid transparent',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'upload') e.currentTarget.style.color = 'var(--color-ink)'
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'upload') e.currentTarget.style.color = 'var(--color-ink-light)'
+          }}
         >
           <Upload className="w-4 h-4" />
-          <span>Upload</span>
+          <span>upload</span>
         </button>
 
         <button
           onClick={() => setActiveTab('graph')}
-          className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
-            activeTab === 'graph'
-              ? 'text-purple-400 border-b-2 border-purple-400'
-              : 'text-slate-400 hover:text-slate-300'
-          }`}
+          style={{
+            padding: '0.75rem 1.5rem',
+            fontWeight: 500,
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            color: activeTab === 'graph' ? 'var(--color-forest)' : 'var(--color-ink-light)',
+            borderBottom: activeTab === 'graph' ? '2px solid var(--color-forest)' : '2px solid transparent',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'graph') e.currentTarget.style.color = 'var(--color-ink)'
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'graph') e.currentTarget.style.color = 'var(--color-ink-light)'
+          }}
         >
           <Network className="w-4 h-4" />
-          <span>World Map</span>
+          <span>world map</span>
         </button>
 
         <button
           onClick={() => setActiveTab('inconsistencies')}
-          className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
-            activeTab === 'inconsistencies'
-              ? 'text-purple-400 border-b-2 border-purple-400'
-              : 'text-slate-400 hover:text-slate-300'
-          }`}
+          style={{
+            padding: '0.75rem 1.5rem',
+            fontWeight: 500,
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            color: activeTab === 'inconsistencies' ? 'var(--color-forest)' : 'var(--color-ink-light)',
+            borderBottom: activeTab === 'inconsistencies' ? '2px solid var(--color-forest)' : '2px solid transparent',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'inconsistencies') e.currentTarget.style.color = 'var(--color-ink)'
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'inconsistencies') e.currentTarget.style.color = 'var(--color-ink-light)'
+          }}
         >
           <AlertTriangle className="w-4 h-4" />
-          <span>Inconsistencies</span>
+          <span>inconsistencies</span>
           {inconsistencies.length > 0 && (
-            <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+            <span style={{
+              background: '#c45a5a',
+              color: 'white',
+              fontSize: '0.7rem',
+              padding: '0.125rem 0.5rem',
+              borderRadius: '1rem',
+              fontWeight: 600
+            }}>
               {inconsistencies.length}
             </span>
           )}
@@ -125,30 +211,60 @@ export default function Dashboard({ world, wsMessage }: DashboardProps) {
 
         <button
           onClick={() => setActiveTab('loopholes')}
-          className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
-            activeTab === 'loopholes'
-              ? 'text-purple-400 border-b-2 border-purple-400'
-              : 'text-slate-400 hover:text-slate-300'
-          }`}
+          style={{
+            padding: '0.75rem 1.5rem',
+            fontWeight: 500,
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            color: activeTab === 'loopholes' ? 'var(--color-forest)' : 'var(--color-ink-light)',
+            borderBottom: activeTab === 'loopholes' ? '2px solid var(--color-forest)' : '2px solid transparent',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'loopholes') e.currentTarget.style.color = 'var(--color-ink)'
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'loopholes') e.currentTarget.style.color = 'var(--color-ink-light)'
+          }}
         >
           <Lock className="w-4 h-4" />
-          <span>Loopholes</span>
+          <span>loopholes</span>
         </button>
 
         <button
           onClick={() => setActiveTab('characters')}
-          className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
-            activeTab === 'characters'
-              ? 'text-purple-400 border-b-2 border-purple-400'
-              : 'text-slate-400 hover:text-slate-300'
-          }`}
+          style={{
+            padding: '0.75rem 1.5rem',
+            fontWeight: 500,
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            color: activeTab === 'characters' ? 'var(--color-forest)' : 'var(--color-ink-light)',
+            borderBottom: activeTab === 'characters' ? '2px solid var(--color-forest)' : '2px solid transparent',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'characters') e.currentTarget.style.color = 'var(--color-ink)'
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'characters') e.currentTarget.style.color = 'var(--color-ink-light)'
+          }}
         >
           <Users className="w-4 h-4" />
-          <span>Characters</span>
+          <span>characters</span>
         </button>
       </div>
 
-      <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
+      <div className="paper-card rounded-sm p-6">
         {activeTab === 'upload' && (
           <FileUpload worldId={world.id} onUploadComplete={handleUploadComplete} />
         )}

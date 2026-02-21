@@ -38,16 +38,41 @@ export default function FileUpload({ worldId, onUploadComplete }: FileUploadProp
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-xl font-bold mb-2">Upload Your Manuscript</h3>
-        <p className="text-slate-400">
-          Upload your .docx or .txt file to start analyzing your world-building rules
+      <div>
+        <h3 style={{
+          fontSize: '1.25rem',
+          fontWeight: 600,
+          marginBottom: '0.5rem',
+          color: 'var(--color-ink)'
+        }}>upload your manuscript</h3>
+        <p style={{
+          color: 'var(--color-ink-light)',
+          fontSize: '0.95rem',
+          lineHeight: '1.5'
+        }}>
+          upload your .docx or .txt file to start analyzing your world-building rules
         </p>
       </div>
 
       <div
         onClick={() => fileInputRef.current?.click()}
-        className="border-2 border-dashed border-slate-700 hover:border-purple-500 rounded-lg p-12 text-center cursor-pointer transition-colors"
+        style={{
+          border: '2px dashed var(--color-border)',
+          borderRadius: '2px',
+          padding: '3rem',
+          textAlign: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s',
+          background: 'var(--color-parchment)'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = 'var(--color-forest)'
+          e.currentTarget.style.background = 'var(--color-paper)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = 'var(--color-border)'
+          e.currentTarget.style.background = 'var(--color-parchment)'
+        }}
       >
         <input
           ref={fileInputRef}
@@ -59,20 +84,34 @@ export default function FileUpload({ worldId, onUploadComplete }: FileUploadProp
 
         {file ? (
           <div className="flex flex-col items-center space-y-4">
-            <FileText className="w-16 h-16 text-purple-400" />
+            <FileText style={{ color: 'var(--color-forest)' }} className="w-16 h-16" />
             <div>
-              <p className="font-medium text-white">{file.name}</p>
-              <p className="text-sm text-slate-400">
-                {(file.size / 1024).toFixed(2)} KB
+              <p style={{ 
+                fontWeight: 500,
+                color: 'var(--color-ink)',
+                marginBottom: '0.25rem'
+              }}>{file.name}</p>
+              <p style={{ 
+                fontSize: '0.875rem',
+                color: 'var(--color-ink-light)'
+              }}>
+                {(file.size / 1024).toFixed(2)} kb
               </p>
             </div>
           </div>
         ) : (
           <div className="flex flex-col items-center space-y-4">
-            <Upload className="w-16 h-16 text-slate-600" />
+            <Upload style={{ color: 'var(--color-ink-light)' }} className="w-16 h-16" />
             <div>
-              <p className="font-medium text-slate-400">Click to upload</p>
-              <p className="text-sm text-slate-500">Supports .docx and .txt files</p>
+              <p style={{ 
+                fontWeight: 500,
+                color: 'var(--color-ink)',
+                marginBottom: '0.25rem'
+              }}>click to upload</p>
+              <p style={{ 
+                fontSize: '0.875rem',
+                color: 'var(--color-ink-light)'
+              }}>supports .docx and .txt files</p>
             </div>
           </div>
         )}
@@ -83,22 +122,39 @@ export default function FileUpload({ worldId, onUploadComplete }: FileUploadProp
           <button
             onClick={handleUpload}
             disabled={uploading || success}
-            className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all flex items-center space-x-2"
+            style={{
+              padding: '0.75rem 2rem',
+              background: uploading || success ? 'var(--color-border)' : 'var(--color-forest)',
+              color: uploading || success ? 'var(--color-ink-light)' : 'var(--color-paper)',
+              fontWeight: 500,
+              borderRadius: '2px',
+              border: 'none',
+              cursor: uploading || success ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
+              fontSize: '0.95rem'
+            }}
+            className="flex items-center space-x-2"
+            onMouseEnter={(e) => {
+              if (!uploading && !success) e.currentTarget.style.background = 'var(--color-forest-light)'
+            }}
+            onMouseLeave={(e) => {
+              if (!uploading && !success) e.currentTarget.style.background = 'var(--color-forest)'
+            }}
           >
             {uploading ? (
               <>
                 <Loader className="w-5 h-5 animate-spin" />
-                <span>Processing...</span>
+                <span>processing...</span>
               </>
             ) : success ? (
               <>
                 <CheckCircle className="w-5 h-5" />
-                <span>Upload Complete</span>
+                <span>upload complete</span>
               </>
             ) : (
               <>
                 <Upload className="w-5 h-5" />
-                <span>Upload & Process</span>
+                <span>upload & process</span>
               </>
             )}
           </button>
@@ -106,9 +162,18 @@ export default function FileUpload({ worldId, onUploadComplete }: FileUploadProp
       )}
 
       {success && (
-        <div className="bg-green-900/20 border border-green-700 rounded-lg p-4">
-          <p className="text-green-400 text-center">
-            Your manuscript is being processed. Check other tabs for results!
+        <div style={{
+          background: 'rgba(45, 80, 22, 0.1)',
+          border: '1px solid var(--color-forest)',
+          borderRadius: '2px',
+          padding: '1rem'
+        }}>
+          <p style={{ 
+            color: 'var(--color-forest)',
+            textAlign: 'center',
+            fontSize: '0.95rem'
+          }}>
+            your manuscript is being processed. check other tabs for results!
           </p>
         </div>
       )}

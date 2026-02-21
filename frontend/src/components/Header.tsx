@@ -6,17 +6,31 @@ interface HeaderProps {
 
 export default function Header({ wsConnected }: HeaderProps) {
   return (
-    <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
-      <div className="container mx-auto px-6 py-4">
+    <header style={{ 
+      background: 'var(--color-paper)', 
+      borderBottom: '1px solid var(--color-border)',
+      boxShadow: '0 1px 3px var(--color-shadow)'
+    }} className="sticky top-0 z-50">
+      <div className="container mx-auto px-6 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Sparkles className="w-8 h-8 text-purple-500" />
+            <Sparkles style={{ color: 'var(--color-forest)' }} className="w-7 h-7" />
             <div>
-              <h1 className="text-2xl font-bold gradient-text">
-                Pure Imagination
+              <h1 style={{ 
+                fontFamily: "'Crimson Text', serif",
+                fontSize: '1.75rem',
+                fontWeight: 600,
+                color: 'var(--color-ink)',
+                letterSpacing: '0.01em'
+              }}>
+                pure imagination
               </h1>
-              <p className="text-sm text-slate-400">
-                World-Building AI Architecture
+              <p style={{ 
+                fontSize: '0.8rem',
+                color: 'var(--color-ink-light)',
+                fontStyle: 'italic'
+              }}>
+                world-building architecture
               </p>
             </div>
           </div>
@@ -25,19 +39,28 @@ export default function Header({ wsConnected }: HeaderProps) {
             <div className="flex items-center space-x-2">
               {wsConnected ? (
                 <>
-                  <Wifi className="w-4 h-4 text-green-400" />
-                  <span className="text-xs text-green-400">Connected</span>
+                  <Wifi style={{ color: 'var(--color-forest)' }} className="w-4 h-4" />
+                  <span style={{ 
+                    fontSize: '0.75rem',
+                    color: 'var(--color-forest)'
+                  }}>connected</span>
                 </>
               ) : (
                 <>
-                  <WifiOff className="w-4 h-4 text-red-400" />
-                  <span className="text-xs text-red-400">Disconnected</span>
+                  <WifiOff style={{ color: '#c45a5a' }} className="w-4 h-4" />
+                  <span style={{ 
+                    fontSize: '0.75rem',
+                    color: '#c45a5a'
+                  }}>disconnected</span>
                 </>
               )}
             </div>
             
-            <div className="text-sm text-slate-400">
-              Actian VectorAI DB · Hackathon 2026
+            <div style={{ 
+              fontSize: '0.75rem',
+              color: 'var(--color-ink-light)'
+            }}>
+              actian vectorai db
             </div>
           </div>
         </div>

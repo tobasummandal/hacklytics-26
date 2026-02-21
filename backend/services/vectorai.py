@@ -35,7 +35,8 @@ class VectorAIService:
             f"world_{world_id}_chunks",
             f"world_{world_id}_rules",
             f"world_{world_id}_characters",
-            f"world_{world_id}_settings"
+            f"world_{world_id}_settings",
+            f"world_{world_id}_relationships",
         ]
 
         for collection_name in collections:
@@ -52,6 +53,10 @@ class VectorAIService:
     def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         embeddings = self.model.encode(texts)
         return embeddings.tolist()
+
+    def _generate_id(self, text: str) -> int:
+        import hashlib
+        return int(hashlib.md5(text.encode()).hexdigest(), 16) % (10**9)
 
     async def batch_upsert(
         self,
