@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  vectorai:
+    image: actian/vector-ai:latest
+    container_name: pure-imagination-vectorai
+    ports:
+      - "50051:50051"
+    volumes:
+      - vectorai-data:/data
+    environment:
+      - VECTOR_AI_DATA_DIR=/data
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pure-imagination-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./uploads:/uploads
+    environment:
+      - VECTORAI_HOST=vectorai
+      - VECTORAI_PORT=50051
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - vectorai
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pure-imagination-frontend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0 --port 8080
+
+volumes:
+  vectorai-data:
