@@ -10,9 +10,10 @@ import WorldGraph from './WorldGraph'
 
 interface DashboardProps {
   world: World
+  wsMessage?: any
 }
 
-export default function Dashboard({ world }: DashboardProps) {
+export default function Dashboard({ world, wsMessage }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<'upload' | 'graph' | 'inconsistencies' | 'loopholes' | 'characters'>('upload')
   const [inconsistencies, setInconsistencies] = useState<InconsistencyReport[]>([])
   const [loopholes, setLoopholes] = useState<LoopholeReport[]>([])
@@ -47,10 +48,17 @@ export default function Dashboard({ world }: DashboardProps) {
     }
   }, [world])
 
+  useEffect(() => {
+    if (wsMessage?.world_id === world.id && wsMessage?.type === 'inconsistencies_detected') {
+      loadData()
+    }
+  }, [wsMessage])
+
   const handleUploadComplete = () => {
+    // Fallback poll in case WebSocket isn't connected; backend takes ~30s to process
     setTimeout(() => {
       loadData()
-    }, 2000)
+    }, 35000)
   }
 
   return (

@@ -101,7 +101,7 @@ async def upload_manuscript(world_id: str, file: UploadFile = File(...)):
     if not file.filename.endswith(('.docx', '.txt')):
         raise HTTPException(status_code=400, detail="Only .docx and .txt files are supported")
     
-    upload_dir = "/uploads"
+    upload_dir = os.path.join(os.path.dirname(__file__), "uploads")
     os.makedirs(upload_dir, exist_ok=True)
     
     file_path = os.path.join(upload_dir, f"{world_id}_{file.filename}")
@@ -116,30 +116,39 @@ async def upload_manuscript(world_id: str, file: UploadFile = File(...)):
 
 async def process_manuscript(world_id: str, file_path: str):
     try:
+        print(f"[process] starting ingestion for {world_id}")
         chunks_count = await services['ingestion'].ingest_manuscript(world_id, file_path)
-        
+        print(f"[process] ingested {chunks_count} chunks")
+
         await broadcast_update({
             "type": "ingestion_complete",
             "world_id": world_id,
             "chunks_count": chunks_count
         })
-        
+
+        print(f"[process] extracting rules")
         await services['rule_extraction'].extract_rules(world_id)
-        
+        print(f"[process] rules extracted")
+
         await broadcast_update({
             "type": "rules_extracted",
             "world_id": world_id
         })
-        
+
+        print(f"[process] detecting inconsistencies")
         inconsistencies = await services['inconsistency'].detect_inconsistencies(world_id)
-        
+        print(f"[process] done — {len(inconsistencies)} inconsistencies")
+
         await broadcast_update({
             "type": "inconsistencies_detected",
             "world_id": world_id,
             "count": len(inconsistencies)
         })
-        
+
     except Exception as e:
+        import traceback
+        print(f"[process] ERROR: {e}")
+        traceback.print_exc()
         await broadcast_update({
             "type": "error",
             "world_id": world_id,
@@ -189,11 +198,14 @@ async def websocket_endpoint(websocket: WebSocket):
         connected_clients.remove(websocket)
 
 async def broadcast_update(message: dict):
+    dead_clients = []
     for client in connected_clients:
         try:
             await client.send_json(message)
-        except:
-            pass
+        except Exception:
+            dead_clients.append(client)
+    for client in dead_clients:
+        connected_clients.remove(client)
 
 if __name__ == "__main__":
     import uvicorn

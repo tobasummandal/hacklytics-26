@@ -1,9 +1,18 @@
 import os
+import asyncio
 from typing import List, Dict, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from cortex import CortexClient, DistanceMetric
+from cortex import AsyncCortexClient, DistanceMetric
 from models.schemas import GraphData, GraphNode, GraphEdge, SystemType
+
+def _result_to_dict(r) -> Dict:
+    """Normalize a cortex result object to a plain dict."""
+    return {
+        'id': r.id,
+        'score': float(r.score) if hasattr(r, 'score') else 0.0,
+        'payload': r.payload if isinstance(r.payload, dict) else {},
+    }
 
 class VectorAIService:
     def __init__(self):
@@ -12,14 +21,15 @@ class VectorAIService:
         self.client = None
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
         self.dimension = 384
-        
+
     async def connect(self):
-        self.client = CortexClient(f"{self.host}:{self.port}")
-        
+        self.client = AsyncCortexClient(f"{self.host}:{self.port}")
+        await self.client.__aenter__()
+
     async def disconnect(self):
         if self.client:
-            self.client.__exit__(None, None, None)
-    
+            await self.client.__aexit__(None, None, None)
+
     async def create_world_collections(self, world_id: str):
         collections = [
             f"world_{world_id}_chunks",
@@ -27,21 +37,22 @@ class VectorAIService:
             f"world_{world_id}_characters",
             f"world_{world_id}_settings"
         ]
-        
+
         for collection_name in collections:
             try:
-                self.client.get_or_create_collection(
-                    name=collection_name,
-                    dimension=self.dimension,
-                    distance_metric=DistanceMetric.COSINE
-                )
+                if not await self.client.has_collection(collection_name):
+                    await self.client.create_collection(
+                        name=collection_name,
+                        dimension=self.dimension,
+                        distance_metric=DistanceMetric.COSINE
+                    )
             except Exception as e:
                 print(f"Error creating collection {collection_name}: {e}")
-    
+
     def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         embeddings = self.model.encode(texts)
         return embeddings.tolist()
-    
+
     async def batch_upsert(
         self,
         collection_name: str,
@@ -50,7 +61,7 @@ class VectorAIService:
         payloads: List[Dict]
     ):
         try:
-            self.client.batch_upsert(
+            await self.client.batch_upsert(
                 collection_name,
                 ids,
                 vectors,
@@ -59,7 +70,7 @@ class VectorAIService:
         except Exception as e:
             print(f"Error during batch_upsert: {e}")
             raise
-    
+
     async def search(
         self,
         collection_name: str,
@@ -68,28 +79,16 @@ class VectorAIService:
         filters: Optional[Dict] = None
     ) -> List[Dict]:
         try:
-            if filters:
-                results = self.client.search_filtered(
-                    collection_name,
-                    query_vector,
-                    top_k,
-                    filters
-                )
-            else:
-                results = self.client.search(
-                    collection_name,
-                    query_vector,
-                    top_k
-                )
-            return results
+            results = await self.client.search(collection_name, query_vector, top_k)
+            return [_result_to_dict(r) for r in results]
         except Exception as e:
             print(f"Error during search: {e}")
             return []
-    
+
     async def scroll(self, collection_name: str) -> List[Dict]:
         try:
-            results = self.client.scroll(collection_name)
-            return results
+            results = await self.client.scroll(collection_name)
+            return [_result_to_dict(r) for r in results]
         except Exception as e:
             print(f"Error during scroll: {e}")
             return []
