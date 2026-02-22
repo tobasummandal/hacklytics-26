@@ -175,7 +175,7 @@ export default function Dashboard() {
         if (status.status === 'completed' && status.result) {
           const summary = status.result
           lastIngestedLength.current = storyText.length
-          setIngestSummary(`+${summary.entities} entities · +${summary.relationships} rels · +${summary.embedding_chunks} chunks`)
+          setIngestSummary(`+${summary.entities} entities · +${summary.relationships} rels`)
           await refreshGraph()
           terminalState = 'completed'
           complete = true
@@ -332,7 +332,7 @@ export default function Dashboard() {
               </div>
               {ingestProgress?.totals && (
                 <div style={{ marginTop: '0.3rem', fontStyle: 'italic' }}>
-                  entities {ingestProgress.totals.entities} · rels {ingestProgress.totals.relationships} · chunks {ingestProgress.totals.embedding_chunks}
+                  entities {ingestProgress.totals.entities} · rels {ingestProgress.totals.relationships}
                 </div>
               )}
             </div>
