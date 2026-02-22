@@ -2,7 +2,7 @@ services:
   - type: pserv
     name: vectoraidb
     env: docker
-    image: williamimoh/actian-vectorai-db:1.0b
+    dockerfilePath: ./Dockerfile.vectorai
     plan: starter
     disk:
       name: vectoraidb-data
