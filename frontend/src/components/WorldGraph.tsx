@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Network } from 'vis-network'
 import { DataSet } from 'vis-data'
-import { Loader, Network as NetworkIcon } from 'lucide-react'
+import { Loader, Network as NetworkIcon, Maximize2, Minimize2 } from 'lucide-react'
 import { GraphData } from '../api/client'
 
 interface WorldGraphProps {
@@ -11,7 +11,9 @@ interface WorldGraphProps {
 
 export default function WorldGraph({ data, loading }: WorldGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const networkRef = useRef<Network | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   useEffect(() => {
     if (!data || !containerRef.current || data.nodes.length === 0) return
@@ -55,6 +57,32 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
     return () => { if (networkRef.current) networkRef.current.destroy() }
   }, [data])
 
+  // track fullscreen state changes (including Esc key which browser handles natively)
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
+  // any key press exits fullscreen
+  useEffect(() => {
+    if (!isFullscreen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (document.fullscreenElement) document.exitFullscreen()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isFullscreen])
+
+  const toggleFullscreen = () => {
+    if (!wrapperRef.current) return
+    if (!document.fullscreenElement) {
+      wrapperRef.current.requestFullscreen()
+    } else {
+      document.exitFullscreen()
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -78,18 +106,20 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.75rem' }}>
         <h3 style={{
           fontSize: '1.25rem', fontWeight: 600,
           color: 'var(--color-ink)', fontFamily: "'Crimson Text', serif"
         }}>world topology map</h3>
-        <div className="flex space-x-4" style={{ fontSize: '0.75rem' }}>
+        <div className="flex flex-wrap gap-x-4 gap-y-1" style={{ fontSize: '0.75rem' }}>
           {[
             { color: '#ec4899', label: 'character' },
             { color: '#2563eb', label: 'location' },
             { color: '#9333ea', label: 'faction' },
             { color: '#f59e0b', label: 'event' },
+            { color: '#b45309', label: 'object' },
             { color: '#6b7280', label: 'concept' },
+            { color: '#16a34a', label: 'creature' },
           ].map(({ color, label }) => (
             <div key={label} className="flex items-center space-x-1">
               <div style={{ width: '0.75rem', height: '0.75rem', borderRadius: '50%', background: color }} />
@@ -99,11 +129,37 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
         </div>
       </div>
 
-      <div ref={containerRef} style={{
-        width: '100%', height: '400px',
-        background: '#f5f3ed', borderRadius: '2px',
-        border: '1px solid var(--color-border)'
-      }} />
+      <div
+        ref={wrapperRef}
+        style={{
+          position: 'relative',
+          background: '#f5f3ed',
+          borderRadius: '2px',
+          border: '1px solid var(--color-border)',
+        }}
+      >
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'exit fullscreen' : 'fullscreen'}
+          style={{
+            position: 'absolute', top: '0.5rem', left: '0.5rem', zIndex: 10,
+            background: 'rgba(245,243,237,0.85)', border: '1px solid var(--color-border)',
+            borderRadius: '2px', padding: '0.25rem', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          {isFullscreen
+            ? <Minimize2 style={{ width: '0.875rem', height: '0.875rem', color: 'var(--color-ink)' }} />
+            : <Maximize2 style={{ width: '0.875rem', height: '0.875rem', color: 'var(--color-ink)' }} />
+          }
+        </button>
+
+        <div ref={containerRef} style={{
+          width: '100%',
+          height: isFullscreen ? '100vh' : '260px',
+          minWidth: 0,
+        }} />
+      </div>
 
       <div style={{
         fontSize: '0.875rem', color: 'var(--color-ink-light)',

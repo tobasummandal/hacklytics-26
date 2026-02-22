@@ -38,7 +38,8 @@ Return ONLY valid JSON:
       "issue": "specific description of the contradiction",
       "severity": "high|medium|low",
       "evidence": "what from the knowledge graph contradicts this",
-      "suggestion": "how the author might resolve it"
+      "suggestion": "how the author might resolve it",
+      "conflicting_excerpts": ["exact phrase or sentence from the new text that is in conflict"]
     }}
   ]
 }}
@@ -46,6 +47,8 @@ Return ONLY valid JSON:
 Output Rules:
 - The "evidence" field MUST contain exactly two sentences.
 - The "suggestion" field MUST contain exactly two sentences.
+- "conflicting_excerpts" must be exact substrings copied verbatim from the new text — do not paraphrase, do not truncate, do not alter punctuation or capitalisation.
+- "conflicting_excerpts" can contain multiple entries if several phrases in the new text conflict. If the contradiction is about omission rather than a specific phrase, leave the array empty.
 - Do not output reasoning.
 - Do not output markdown.
 - Do not output commentary.

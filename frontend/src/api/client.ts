@@ -36,6 +36,7 @@ export interface Flag {
   severity: 'high' | 'medium' | 'low'
   evidence: string
   suggestion: string
+  conflicting_excerpts: string[]
 }
 
 export interface GraphNode {

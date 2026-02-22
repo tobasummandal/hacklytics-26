@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import uuid
 
 from google import genai
 from google.genai import types
@@ -11,10 +10,13 @@ import db
 gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 EXTRACTION_PROMPT = """
-You are a story analysis AI. Analyze this passage and return ONLY valid JSON
+You are a story analysis AI. Analyze the passage below and return ONLY valid JSON
 with no markdown, no explanation, no trailing commas.
 
+{prev_context}
+
 {{
+  "characters_present": ["CharacterName"],
   "entities": [
     {{
       "type": "character|location|event|object|faction|creature|concept",
@@ -31,8 +33,8 @@ with no markdown, no explanation, no trailing commas.
     {{
       "from": "EntityName",
       "to": "EntityName",
-      "type": "loves|hates|distrusts|fears|respects|betrayed|member_of|leads|owns|caused|witnessed|located_in|controls|enemy_of|ally_of",
-      "description": "only include if the relationship has specific nuance beyond the type label — e.g. 'distrusts because of past betrayal' or 'loves but keeps it secret'. Leave as null if the type label is self-explanatory."
+      "type": "loves|hates|distrusts|fears|respects|betrayed|member_of|leads|owns|caused|witnessed|located_in|controls|enemy_of|ally_of|kills|protects|serves|opposes|mentors|rivals",
+      "description": "only include if the relationship has specific nuance beyond the type label. Leave as null if the type label is self-explanatory."
     }}
   ],
   "embedding_chunks": [
@@ -44,66 +46,100 @@ with no markdown, no explanation, no trailing commas.
   ]
 }}
 
+--- RULES FOR characters_present ---
+
+- List every named character who appears or is meaningfully referenced in the CURRENT passage only
+- Resolve pronouns using the preceding context if provided — output the actual name, never a pronoun
+- If a pronoun cannot be resolved to a known name, omit that character entirely
+- This list is ONLY for pronoun resolution of character names — it does NOT limit what goes into entities
+
 --- RULES FOR ENTITIES ---
 
-- Only extract entities that are explicitly present or clearly referenced in the passage
-- Do not infer or invent entities not mentioned in the text
-- Use the character's most commonly used name — do not create duplicate entries for nicknames
+- Extract characters, and only extract other types (location, event, object, faction, creature, concept) if they are plot-significant — not merely mentioned in passing
+- A location is worth extracting if it is a named place that matters to the scene (e.g. "Penny's classroom"), not generic settings like "the hallway" or "the table"
+- An object is worth extracting only if it carries symbolic, emotional, or plot weight (e.g. a specific heirloom, a weapon, a letter) — not incidental props
+- An event is worth extracting only if it is a named or recurring event characters explicitly reference (e.g. "the staff potluck"), not actions like "he walked in"
+- A concept or faction is worth extracting only if it is named and meaningfully shapes the story
+- When in doubt, do NOT extract — fewer precise entities beat many vague ones
+- If the same thing is referred to by multiple names (e.g. "the Gate" and "Gate of Mourning"), extract it once using the most specific name
+- Only extract from the CURRENT passage (not from preceding context)
+- For character entities: use resolved names from characters_present — never use pronouns
+- Use the most commonly used name — no duplicates for nicknames or slight variations
 - For attributes, value should be a concise, specific phrase — not a single word and not a full paragraph
   Good: "speaks in short clipped sentences when angry"
   Bad: "angry" or "Sarah tends to speak in a very particular way when she is feeling emotions"
-- Only extract attributes that are clearly revealed in this passage — do not infer backstory
-- A character can have zero attributes if nothing meaningful is revealed about them in this passage
+- Only extract attributes clearly revealed in this passage — do not infer backstory
+- A character can have zero attributes if nothing meaningful is revealed in this passage
 
 --- RULES FOR RELATIONSHIPS ---
 
-- Only extract relationships that are explicitly shown or stated in this passage
+- Only extract relationships explicitly shown or stated in the CURRENT passage
 - Do not infer relationships from implication alone
 - Both entities in a relationship must already exist in the entities list
-- description is optional — only add it when the relationship has specific context 
-  that the type label alone does not capture
-- Do not create duplicate relationships — if the same relationship appears 
-  multiple times in a passage, extract it once
+- description is optional — only add it when the relationship has specific context the type label alone does not capture
+- Do not create duplicate relationships
 
 --- RULES FOR EMBEDDING CHUNKS ---
 
-- Only create a chunk if the character does something that reveals personality, 
+- Only create a chunk if the character does something that reveals personality,
   emotion under pressure, a decision, a belief, or a relationship dynamic
-- Skip: appearance descriptions, world building, setting, 
+- Skip: appearance descriptions, world building, setting,
   routine actions with no emotional content, passing mentions
-- Write the behavioral_summary as a natural paragraph — 
-  do not follow a rigid template, let the content of the moment guide the writing
+- Write the behavioral_summary as a natural paragraph
 - One chunk per meaningful character moment
-- If nothing meaningful is revealed about a character in this passage, omit them entirely
+- Use resolved character names — never use pronouns as primary_character
 
 Passage to analyze:
 {passage}"""
 
+PREV_CONTEXT_BLOCK = """\
+--- PRECEDING CHARACTER CONTEXT ---
+The following named characters were present in the passage immediately before this one: {prev_characters}.
+Use this ONLY to resolve pronouns or ambiguous references in the current passage.
+Do NOT extract entities or relationships from this context.
+--- END PRECEDING CHARACTER CONTEXT ---
+"""
+
 
 def chunk_text(text: str, max_words: int = 150) -> list[str]:
+    # split into paragraphs first, then sentences within oversized paragraphs
     paragraphs = [p.strip() for p in re.split(r"\n+", text) if p.strip()]
-    chunks, current, count = [], [], 0
+
+    sentences: list[str] = []
     for para in paragraphs:
-        words = len(para.split())
+        if len(para.split()) <= max_words:
+            sentences.append(para)
+        else:
+            # split paragraph into sentences
+            parts = re.split(r'(?<=[.!?])\s+', para)
+            sentences.extend(p.strip() for p in parts if p.strip())
+
+    chunks, current, count = [], [], 0
+    for sent in sentences:
+        words = len(sent.split())
         if count + words > max_words and current:
-            chunks.append("\n\n".join(current))
+            chunks.append(" ".join(current))
             current, count = [], 0
-        current.append(para)
+        current.append(sent)
         count += words
     if current:
-        chunks.append("\n\n".join(current))
+        chunks.append(" ".join(current))
     return chunks
 
 
-async def _extract(passage: str) -> dict:
+async def _extract(passage: str, prev_characters: list[str] | None = None) -> dict:
+    prev_context = PREV_CONTEXT_BLOCK.format(prev_characters=", ".join(prev_characters)) if prev_characters else ""
+    prompt = EXTRACTION_PROMPT.format(passage=passage, prev_context=prev_context)
+    print(f"\n[prompt]\n{prompt}\n[/prompt]")
     resp = await gemini.aio.models.generate_content(
         model="gemini-2.5-flash",
-        contents=EXTRACTION_PROMPT.format(passage=passage),
+        contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             temperature=0,
         ),
     )
+    print(f"\n[llm response]\n{resp.text}\n[/llm response]")
     return json.loads(resp.text)
 
 
@@ -153,10 +189,15 @@ async def _upsert_relationship(db_conn, from_id: int, to_id: int, rtype: str, de
 async def ingest(text: str, chapter: int) -> dict:
     chunks = chunk_text(text)
     totals = {"entities": 0, "attributes": 0, "relationships": 0, "embedding_chunks": 0}
+    prev_characters: list[str] | None = None
 
     for i, chunk in enumerate(chunks):
         print(f"[ingest] chunk {i+1}/{len(chunks)} ({len(chunk.split())} words)")
-        extracted = await _extract(chunk)
+        extracted = await _extract(chunk, prev_characters=prev_characters)
+        prev_characters = extracted.get("characters_present", [])
+        if prev_characters:
+            print(f"[ingest] characters_present: {prev_characters}")
+
         name_to_id: dict[str, int] = {}
 
         async with db.get_db() as conn:
@@ -179,7 +220,7 @@ async def ingest(text: str, chapter: int) -> dict:
                     await _upsert_relationship(conn, from_id, to_id, rel["type"], rel.get("description", ""))
                     totals["relationships"] += 1
 
-            # embedding chunks — insert metadata into SQLite first to get IDs
+            # embedding chunks
             ec_items = extracted.get("embedding_chunks", [])
             sqlite_ids, valid_items = [], []
             for ec in ec_items:

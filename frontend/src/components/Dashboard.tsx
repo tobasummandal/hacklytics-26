@@ -6,6 +6,103 @@ import WorldGraph from './WorldGraph'
 
 const CHAPTER = 1
 
+const EDITOR_STYLE = {
+  fontFamily: "'Lora', Georgia, serif",
+  fontSize: '0.875rem',
+  lineHeight: '1.8',
+  padding: '1.25rem 1.5rem',
+} as const
+
+function HighlightTextarea({ value, onChange, highlights, placeholder }: {
+  value: string
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  highlights: string[]
+  placeholder?: string
+}) {
+  const backdropRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const getHTML = () => {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    if (highlights.length === 0) return esc(value)
+
+    // find all match ranges in original text (case-insensitive)
+    const ranges: { start: number; end: number }[] = []
+    for (const h of highlights) {
+      if (!h.trim()) continue
+      let idx = 0
+      while (true) {
+        const found = value.toLowerCase().indexOf(h.toLowerCase(), idx)
+        if (found === -1) break
+        ranges.push({ start: found, end: found + h.length })
+        idx = found + 1
+      }
+    }
+
+    // sort + merge overlapping ranges
+    ranges.sort((a, b) => a.start - b.start)
+    const merged: { start: number; end: number }[] = []
+    for (const r of ranges) {
+      const last = merged[merged.length - 1]
+      if (last && r.start <= last.end) last.end = Math.max(last.end, r.end)
+      else merged.push({ ...r })
+    }
+
+    // build html
+    let html = ''
+    let pos = 0
+    for (const { start, end } of merged) {
+      html += esc(value.slice(pos, start))
+      html += `<mark style="background:rgba(196,90,90,0.3);border-radius:2px;color:inherit;">${esc(value.slice(start, end))}</mark>`
+      pos = end
+    }
+    html += esc(value.slice(pos))
+    return html
+  }
+
+  const syncScroll = () => {
+    if (backdropRef.current && textareaRef.current)
+      backdropRef.current.scrollTop = textareaRef.current.scrollTop
+  }
+
+  return (
+    <div style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
+      {/* highlighted backdrop */}
+      <div
+        ref={backdropRef}
+        aria-hidden
+        style={{
+          ...EDITOR_STYLE,
+          position: 'absolute', inset: 0,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          overflowWrap: 'break-word', overflow: 'hidden',
+          color: 'transparent', background: 'var(--color-paper)',
+          pointerEvents: 'none', boxSizing: 'border-box',
+        }}
+        dangerouslySetInnerHTML={{ __html: getHTML() + '\n' }}
+      />
+      {/* actual textarea — transparent so backdrop shows through */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={onChange}
+        onScroll={syncScroll}
+        placeholder={placeholder}
+        style={{
+          ...EDITOR_STYLE,
+          position: 'absolute', inset: 0,
+          width: '100%', height: '100%',
+          resize: 'none', border: 'none', outline: 'none',
+          background: 'transparent',
+          color: 'var(--color-ink)',
+          boxSizing: 'border-box',
+          caretColor: 'var(--color-ink)',
+        }}
+      />
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const [storyText, setStoryText] = useState('')
   const [newText, setNewText] = useState('')
@@ -17,6 +114,8 @@ export default function Dashboard() {
   const [ingestSummary, setIngestSummary] = useState<string | null>(null)
 
   const lastIngestedLength = useRef(0)
+
+  const highlights = flags.flatMap(f => f.conflicting_excerpts ?? [])
 
   const refreshGraph = useCallback(async () => {
     try { setGraphData(await api.getGraph()) } catch {}
@@ -72,9 +171,8 @@ export default function Dashboard() {
   }
 
   const handleNewTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value
-    setNewText(val)
-    if (!val.trim()) setFlags([])
+    setNewText(e.target.value)
+    setFlags([])
   }
 
   useEffect(() => { refreshGraph() }, [])
@@ -110,29 +208,21 @@ export default function Dashboard() {
             manuscript
           </span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={handleReset}
-              disabled={resetting}
-              style={{
-                ...btnBase,
-                background: resetting ? 'var(--color-border)' : '#c45a5a',
-                color: resetting ? 'var(--color-ink-light)' : 'white',
-                cursor: resetting ? 'not-allowed' : 'pointer',
-              }}
-            >
+            <button onClick={handleReset} disabled={resetting} style={{
+              ...btnBase,
+              background: resetting ? 'var(--color-border)' : '#c45a5a',
+              color: resetting ? 'var(--color-ink-light)' : 'white',
+              cursor: resetting ? 'not-allowed' : 'pointer',
+            }}>
               {resetting && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
               {resetting ? 'resetting…' : 'reset'}
             </button>
-            <button
-              onClick={handleIngest}
-              disabled={ingesting || !storyText.trim()}
-              style={{
-                ...btnBase,
-                background: ingesting || !storyText.trim() ? 'var(--color-border)' : 'var(--color-forest)',
-                color: ingesting || !storyText.trim() ? 'var(--color-ink-light)' : 'white',
-                cursor: ingesting || !storyText.trim() ? 'not-allowed' : 'pointer',
-              }}
-            >
+            <button onClick={handleIngest} disabled={ingesting || !storyText.trim()} style={{
+              ...btnBase,
+              background: ingesting || !storyText.trim() ? 'var(--color-border)' : 'var(--color-forest)',
+              color: ingesting || !storyText.trim() ? 'var(--color-ink-light)' : 'white',
+              cursor: ingesting || !storyText.trim() ? 'not-allowed' : 'pointer',
+            }}>
               {ingesting && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
               {ingesting ? 'ingesting…' : 'ingest'}
             </button>
@@ -146,9 +236,7 @@ export default function Dashboard() {
           placeholder="Paste your existing story here. Hit 'ingest' to build the knowledge graph."
           style={{
             flex: 2, resize: 'none', border: 'none', outline: 'none',
-            padding: '1.25rem 1.5rem',
-            fontFamily: "'Lora', Georgia, serif",
-            fontSize: '0.875rem', lineHeight: '1.8',
+            ...EDITOR_STYLE,
             color: 'var(--color-ink)', background: 'var(--color-paper)', minHeight: 0,
           }}
         />
@@ -193,30 +281,25 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* New writing textarea */}
-        <textarea
+        {/* New writing — highlighted textarea */}
+        <HighlightTextarea
           value={newText}
           onChange={handleNewTextChange}
+          highlights={highlights}
           placeholder="Write your new paragraph here. Hit 'check' to run consistency analysis."
-          style={{
-            flex: 1, resize: 'none', border: 'none', outline: 'none',
-            padding: '1.25rem 1.5rem',
-            fontFamily: "'Lora', Georgia, serif",
-            fontSize: '0.875rem', lineHeight: '1.8',
-            color: 'var(--color-ink)', background: 'var(--color-paper)', minHeight: 0,
-          }}
         />
       </div>
 
       {/* ── Right: Graph + Flags ── */}
-      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--color-parchment)' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--color-parchment)' }}>
         <div style={{
           borderBottom: '1px solid var(--color-border)',
-          background: 'var(--color-paper)', padding: '1.25rem 1.5rem',
+          background: 'var(--color-paper)', padding: '1rem 1.5rem',
+          flexShrink: 0,
         }}>
           <WorldGraph data={graphData} loading={false} />
         </div>
-        <div style={{ padding: '1.25rem 1.5rem' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '1rem 1.5rem' }}>
           <FlagPanel flags={flags} checking={checking} />
         </div>
       </div>

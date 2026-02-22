@@ -19,14 +19,14 @@ export default function Header() {
                 color: 'var(--color-ink)',
                 letterSpacing: '0.01em'
               }}>
-                archivist
+                the archivist
               </h1>
               <p style={{
                 fontSize: '0.8rem',
                 color: 'var(--color-ink-light)',
                 fontStyle: 'italic'
               }}>
-                story consistency engine
+                helping stories stay true to themselves
               </p>
             </div>
           </div>
