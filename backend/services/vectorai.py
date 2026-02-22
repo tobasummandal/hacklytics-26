@@ -4,6 +4,8 @@ from typing import List, Dict, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from cortex import AsyncCortexClient, DistanceMetric
+from grpc import StatusCode
+from grpc.aio import AioRpcError
 from models.schemas import GraphData, GraphNode, GraphEdge, SystemType
 
 def _result_to_dict(r) -> Dict:
@@ -26,9 +28,32 @@ class VectorAIService:
         self.client = AsyncCortexClient(f"{self.host}:{self.port}")
         await self.client.__aenter__()
 
+    async def reconnect(self):
+        try:
+            await self.disconnect()
+        except Exception:
+            pass
+        await self.connect()
+
     async def disconnect(self):
         if self.client:
-            await self.client.__aexit__(None, None, None)
+            try:
+                await self.client.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self.client = None
+            await asyncio.sleep(0.1)  # let gRPC cleanup
+
+    async def _with_retry(self, coro_fn):
+        """Call coro_fn(), reconnect and retry once on UNAVAILABLE gRPC errors."""
+        try:
+            return await coro_fn()
+        except AioRpcError as e:
+            if e.code() == StatusCode.UNAVAILABLE:
+                print("[vectorai] gRPC connection lost, reconnecting...")
+                await self.reconnect()
+                return await coro_fn()
+            raise
 
     async def create_world_collections(self, world_id: str):
         collections = [
@@ -41,12 +66,14 @@ class VectorAIService:
 
         for collection_name in collections:
             try:
-                if not await self.client.has_collection(collection_name):
-                    await self.client.create_collection(
-                        name=collection_name,
-                        dimension=self.dimension,
-                        distance_metric=DistanceMetric.COSINE
-                    )
+                async def _create(cn=collection_name):
+                    if not await self.client.has_collection(cn):
+                        await self.client.create_collection(
+                            name=cn,
+                            dimension=self.dimension,
+                            distance_metric=DistanceMetric.COSINE
+                        )
+                await self._with_retry(_create)
             except Exception as e:
                 print(f"Error creating collection {collection_name}: {e}")
 
@@ -66,11 +93,8 @@ class VectorAIService:
         payloads: List[Dict]
     ):
         try:
-            await self.client.batch_upsert(
-                collection_name,
-                ids,
-                vectors,
-                payloads
+            await self._with_retry(
+                lambda: self.client.batch_upsert(collection_name, ids, vectors, payloads)
             )
         except Exception as e:
             print(f"Error during batch_upsert: {e}")
@@ -84,7 +108,9 @@ class VectorAIService:
         filters: Optional[Dict] = None
     ) -> List[Dict]:
         try:
-            results = await self.client.search(collection_name, query_vector, top_k)
+            results = await self._with_retry(
+                lambda: self.client.search(collection_name, query_vector, top_k)
+            )
             return [_result_to_dict(r) for r in results]
         except Exception as e:
             print(f"Error during search: {e}")
@@ -92,7 +118,9 @@ class VectorAIService:
 
     async def scroll(self, collection_name: str) -> List[Dict]:
         try:
-            results = await self.client.scroll(collection_name)
+            results = await self._with_retry(
+                lambda: self.client.scroll(collection_name)
+            )
             return [_result_to_dict(r) for r in results]
         except Exception as e:
             print(f"Error during scroll: {e}")

@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react'
-import { Upload, AlertTriangle, Lock, Users, Network } from 'lucide-react'
-import { World, InconsistencyReport, LoopholeReport, CharacterProfile, GraphData } from '../types'
+import { useState, useEffect, useRef } from 'react'
+import { Loader, Upload } from 'lucide-react'
+import { World, InconsistencyReport, LoopholeReport, GraphData } from '../types'
 import { api } from '../api/client'
-import FileUpload from './FileUpload'
 import InconsistencyPanel from './InconsistencyPanel'
 import LoopholePanel from './LoopholePanel'
-import CharacterPanel from './CharacterPanel'
 import WorldGraph from './WorldGraph'
 
 interface DashboardProps {
@@ -14,276 +12,201 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ world, wsMessage }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState<'upload' | 'graph' | 'inconsistencies' | 'loopholes' | 'characters'>('upload')
+  const [text, setText] = useState('')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analyzed, setAnalyzed] = useState(false)
   const [inconsistencies, setInconsistencies] = useState<InconsistencyReport[]>([])
   const [loopholes, setLoopholes] = useState<LoopholeReport[]>([])
-  const [characters, setCharacters] = useState<CharacterProfile[]>([])
   const [graphData, setGraphData] = useState<GraphData | null>(null)
   const [loading, setLoading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadData = async () => {
     setLoading(true)
     try {
-      const [incData, loopData, charData, graph] = await Promise.all([
+      const [incData, loopData, graph] = await Promise.all([
         api.getInconsistencies(world.id),
         api.getLoopholes(world.id),
-        api.getCharacters(world.id),
-        api.getWorldGraph(world.id)
+        api.getWorldGraph(world.id),
       ])
-
       setInconsistencies(incData)
       setLoopholes(loopData)
-      setCharacters(charData)
       setGraphData(graph)
-    } catch (error) {
-      console.error('Error loading data:', error)
+    } catch (e) {
+      console.error(e)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (world.rule_count > 0) {
+    if (wsMessage?.world_id === world.id && wsMessage?.type === 'inconsistencies_detected') {
+      setAnalyzing(false)
+      setAnalyzed(true)
       loadData()
     }
-  }, [world])
-
-  useEffect(() => {
-    if (wsMessage?.world_id === world.id && wsMessage?.type === 'inconsistencies_detected') {
-      loadData()
+    if (wsMessage?.world_id === world.id && wsMessage?.type === 'error') {
+      setAnalyzing(false)
     }
   }, [wsMessage])
 
-  const handleUploadComplete = () => {
-    // Fallback poll in case WebSocket isn't connected; backend takes ~30s to process
-    setTimeout(() => {
-      loadData()
-    }, 35000)
+  const submit = async (file: File) => {
+    setAnalyzing(true)
+    setAnalyzed(false)
+    try {
+      await api.uploadManuscript(world.id, file)
+      // fallback reload if WS doesn't fire
+      setTimeout(() => {
+        setAnalyzing(false)
+        setAnalyzed(true)
+        loadData()
+      }, 40000)
+    } catch (e) {
+      console.error(e)
+      setAnalyzing(false)
+    }
   }
 
+  const handleAnalyze = () => {
+    if (!text.trim()) return
+    const blob = new Blob([text], { type: 'text/plain' })
+    submit(new File([blob], 'manuscript.txt', { type: 'text/plain' }))
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) submit(file)
+  }
+
+  const HEADER_H = 81
+
   return (
-    <div className="container mx-auto px-6 py-8">
-      <div className="mb-8">
-        <h2 style={{
-          fontFamily: "'Crimson Text', serif",
-          fontSize: '2.25rem',
-          fontWeight: 600,
-          marginBottom: '0.5rem',
-          color: 'var(--color-ink)',
-          letterSpacing: '0.01em'
-        }}>{world.name}</h2>
-        {world.description && (
-          <p style={{ 
-            color: 'var(--color-ink-light)',
-            fontSize: '1rem',
-            fontStyle: 'italic',
-            marginBottom: '1rem'
-          }}>{world.description}</p>
-        )}
-        
-        <div className="flex space-x-6 mt-4">
-          <div className="flex items-center space-x-2">
-            <div style={{ 
-              width: '0.5rem',
-              height: '0.5rem',
-              borderRadius: '50%',
-              background: 'var(--color-forest)'
-            }}></div>
-            <span style={{ 
-              fontSize: '0.875rem',
-              color: 'var(--color-ink-light)'
-            }}>{world.rule_count} rules</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div style={{ 
-              width: '0.5rem',
-              height: '0.5rem',
-              borderRadius: '50%',
-              background: 'var(--color-gold)'
-            }}></div>
-            <span style={{ 
-              fontSize: '0.875rem',
-              color: 'var(--color-ink-light)'
-            }}>{world.character_count} characters</span>
+    <div style={{ display: 'flex', height: `calc(100vh - ${HEADER_H}px)`, overflow: 'hidden' }}>
+
+      {/* ── Left: Text Editor ── */}
+      <div style={{
+        width: '40%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRight: '1px solid var(--color-border)',
+        background: 'var(--color-paper)',
+      }}>
+        <div style={{
+          padding: '1.25rem 1.5rem 0.75rem',
+          borderBottom: '1px solid var(--color-border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <span style={{
+            fontFamily: "'Crimson Text', serif",
+            fontSize: '1.1rem',
+            fontWeight: 600,
+            color: 'var(--color-ink)',
+          }}>Manuscript</span>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.35rem 0.75rem',
+                border: '1px solid var(--color-border)',
+                background: 'transparent',
+                borderRadius: '2px',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                color: 'var(--color-ink-light)',
+              }}
+            >
+              <Upload style={{ width: '0.875rem', height: '0.875rem' }} />
+              Upload File
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".txt,.docx"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+
+            <button
+              onClick={handleAnalyze}
+              disabled={analyzing || !text.trim()}
+              style={{
+                padding: '0.35rem 1rem',
+                background: analyzing || !text.trim() ? 'var(--color-border)' : 'var(--color-forest)',
+                color: analyzing || !text.trim() ? 'var(--color-ink-light)' : 'white',
+                border: 'none',
+                borderRadius: '2px',
+                cursor: analyzing || !text.trim() ? 'not-allowed' : 'pointer',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                letterSpacing: '0.03em',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+            >
+              {analyzing && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
+              {analyzing ? 'Analyzing...' : 'Analyze'}
+            </button>
           </div>
         </div>
-      </div>
 
-      <div style={{ 
-        display: 'flex',
-        gap: '0.5rem',
-        marginBottom: '1.5rem',
-        borderBottom: '1px solid var(--color-border)',
-        overflowX: 'auto'
-      }}>
-        <button
-          onClick={() => setActiveTab('upload')}
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Paste or type your manuscript here..."
           style={{
-            padding: '0.75rem 1.5rem',
-            fontWeight: 500,
-            fontSize: '0.95rem',
-            transition: 'all 0.2s',
-            color: activeTab === 'upload' ? 'var(--color-forest)' : 'var(--color-ink-light)',
-            borderBottom: activeTab === 'upload' ? '2px solid var(--color-forest)' : '2px solid transparent',
-            background: 'transparent',
+            flex: 1,
+            resize: 'none',
             border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
+            outline: 'none',
+            padding: '1.25rem 1.5rem',
+            fontFamily: "'Lora', Georgia, serif",
+            fontSize: '0.9rem',
+            lineHeight: '1.8',
+            color: 'var(--color-ink)',
+            background: 'var(--color-paper)',
           }}
-          onMouseEnter={(e) => {
-            if (activeTab !== 'upload') e.currentTarget.style.color = 'var(--color-ink)'
-          }}
-          onMouseLeave={(e) => {
-            if (activeTab !== 'upload') e.currentTarget.style.color = 'var(--color-ink-light)'
-          }}
-        >
-          <Upload className="w-4 h-4" />
-          <span>upload</span>
-        </button>
+        />
 
-        <button
-          onClick={() => setActiveTab('graph')}
-          style={{
+        {analyzed && (
+          <div style={{
             padding: '0.75rem 1.5rem',
-            fontWeight: 500,
-            fontSize: '0.95rem',
-            transition: 'all 0.2s',
-            color: activeTab === 'graph' ? 'var(--color-forest)' : 'var(--color-ink-light)',
-            borderBottom: activeTab === 'graph' ? '2px solid var(--color-forest)' : '2px solid transparent',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-          onMouseEnter={(e) => {
-            if (activeTab !== 'graph') e.currentTarget.style.color = 'var(--color-ink)'
-          }}
-          onMouseLeave={(e) => {
-            if (activeTab !== 'graph') e.currentTarget.style.color = 'var(--color-ink-light)'
-          }}
-        >
-          <Network className="w-4 h-4" />
-          <span>world map</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('inconsistencies')}
-          style={{
-            padding: '0.75rem 1.5rem',
-            fontWeight: 500,
-            fontSize: '0.95rem',
-            transition: 'all 0.2s',
-            color: activeTab === 'inconsistencies' ? 'var(--color-forest)' : 'var(--color-ink-light)',
-            borderBottom: activeTab === 'inconsistencies' ? '2px solid var(--color-forest)' : '2px solid transparent',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-          onMouseEnter={(e) => {
-            if (activeTab !== 'inconsistencies') e.currentTarget.style.color = 'var(--color-ink)'
-          }}
-          onMouseLeave={(e) => {
-            if (activeTab !== 'inconsistencies') e.currentTarget.style.color = 'var(--color-ink-light)'
-          }}
-        >
-          <AlertTriangle className="w-4 h-4" />
-          <span>inconsistencies</span>
-          {inconsistencies.length > 0 && (
-            <span style={{
-              background: '#c45a5a',
-              color: 'white',
-              fontSize: '0.7rem',
-              padding: '0.125rem 0.5rem',
-              borderRadius: '1rem',
-              fontWeight: 600
-            }}>
-              {inconsistencies.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('loopholes')}
-          style={{
-            padding: '0.75rem 1.5rem',
-            fontWeight: 500,
-            fontSize: '0.95rem',
-            transition: 'all 0.2s',
-            color: activeTab === 'loopholes' ? 'var(--color-forest)' : 'var(--color-ink-light)',
-            borderBottom: activeTab === 'loopholes' ? '2px solid var(--color-forest)' : '2px solid transparent',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-          onMouseEnter={(e) => {
-            if (activeTab !== 'loopholes') e.currentTarget.style.color = 'var(--color-ink)'
-          }}
-          onMouseLeave={(e) => {
-            if (activeTab !== 'loopholes') e.currentTarget.style.color = 'var(--color-ink-light)'
-          }}
-        >
-          <Lock className="w-4 h-4" />
-          <span>loopholes</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('characters')}
-          style={{
-            padding: '0.75rem 1.5rem',
-            fontWeight: 500,
-            fontSize: '0.95rem',
-            transition: 'all 0.2s',
-            color: activeTab === 'characters' ? 'var(--color-forest)' : 'var(--color-ink-light)',
-            borderBottom: activeTab === 'characters' ? '2px solid var(--color-forest)' : '2px solid transparent',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-          onMouseEnter={(e) => {
-            if (activeTab !== 'characters') e.currentTarget.style.color = 'var(--color-ink)'
-          }}
-          onMouseLeave={(e) => {
-            if (activeTab !== 'characters') e.currentTarget.style.color = 'var(--color-ink-light)'
-          }}
-        >
-          <Users className="w-4 h-4" />
-          <span>characters</span>
-        </button>
-      </div>
-
-      <div className="paper-card rounded-sm p-6">
-        {activeTab === 'upload' && (
-          <FileUpload worldId={world.id} onUploadComplete={handleUploadComplete} />
+            borderTop: '1px solid var(--color-border)',
+            fontSize: '0.8rem',
+            color: 'var(--color-forest)',
+            fontStyle: 'italic',
+          }}>
+            Analysis complete · {inconsistencies.length} inconsistenc{inconsistencies.length !== 1 ? 'ies' : 'y'} · {loopholes.length} loophole{loopholes.length !== 1 ? 's' : ''}
+          </div>
         )}
+      </div>
 
-        {activeTab === 'graph' && (
+      {/* ── Right: Visualizations ── */}
+      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--color-parchment)' }}>
+
+        <div style={{
+          borderBottom: '1px solid var(--color-border)',
+          background: 'var(--color-paper)',
+          padding: '1.25rem 1.5rem',
+        }}>
           <WorldGraph data={graphData} loading={loading} />
-        )}
+        </div>
 
-        {activeTab === 'inconsistencies' && (
+        <div style={{
+          borderBottom: '1px solid var(--color-border)',
+          padding: '1.25rem 1.5rem',
+        }}>
           <InconsistencyPanel inconsistencies={inconsistencies} loading={loading} />
-        )}
+        </div>
 
-        {activeTab === 'loopholes' && (
+        <div style={{ padding: '1.25rem 1.5rem' }}>
           <LoopholePanel loopholes={loopholes} loading={loading} />
-        )}
+        </div>
 
-        {activeTab === 'characters' && (
-          <CharacterPanel characters={characters} loading={loading} />
-        )}
       </div>
     </div>
   )
