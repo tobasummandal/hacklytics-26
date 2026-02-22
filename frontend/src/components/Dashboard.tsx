@@ -4,6 +4,10 @@ import { api, Flag, GraphData, IngestProgress } from '../api/client'
 import FlagPanel from './FlagPanel'
 import WorldGraph from './WorldGraph'
 
+const GRAPH_MIN_H = 160
+const GRAPH_MAX_H = 620
+const GRAPH_DEFAULT_H = 320
+
 const CHAPTER = 1
 
 const EDITOR_STYLE = {
@@ -115,13 +119,18 @@ export default function Dashboard() {
   const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null)
   const [ingestError, setIngestError] = useState<string | null>(null)
   const [checkError, setCheckError] = useState<string | null>(null)
+  const [graphHeight, setGraphHeight] = useState(GRAPH_DEFAULT_H)
+  const isDragging = useRef(false)
+  const dragStartY = useRef(0)
+  const dragStartH = useRef(0)
+  const rafRef = useRef<number | null>(null)
 
   const lastIngestedLength = useRef(0)
 
   const highlights = flags.flatMap(f => f.conflicting_excerpts ?? [])
 
   const refreshGraph = useCallback(async () => {
-    try { setGraphData(await api.getGraph()) } catch {}
+    try { setGraphData(await api.getGraph()) } catch { }
   }, [])
 
   const runCheck = useCallback(async (text: string) => {
@@ -225,6 +234,33 @@ export default function Dashboard() {
   }
 
   useEffect(() => { refreshGraph() }, [])
+
+  const onDividerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    isDragging.current = true
+    dragStartY.current = e.clientY
+    dragStartH.current = graphHeight
+  }
+
+  const onDividerPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging.current) return
+    const delta = e.clientY - dragStartY.current
+    const next = Math.min(GRAPH_MAX_H, Math.max(GRAPH_MIN_H, dragStartH.current + delta))
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    rafRef.current = requestAnimationFrame(() => {
+      setGraphHeight(next)
+      rafRef.current = null
+    })
+  }
+
+  const onDividerPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    isDragging.current = false
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+  }
 
   const HEADER_H = 81
 
@@ -393,14 +429,50 @@ export default function Dashboard() {
 
       {/* ── Right: Graph + Flags ── */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--color-parchment)' }}>
+
+        {/* Graph panel — user-controlled height */}
         <div style={{
-          borderBottom: '1px solid var(--color-border)',
-          background: 'var(--color-paper)', padding: '1rem 1.5rem',
+          height: graphHeight,
           flexShrink: 0,
+          background: 'var(--color-paper)',
+          padding: '1rem 1.5rem',
+          overflow: 'hidden',
+          transition: 'height 0.02s linear',
+          boxSizing: 'border-box',
         }}>
-          <WorldGraph data={graphData} loading={false} />
+          <WorldGraph data={graphData} loading={false} graphHeight={graphHeight} />
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '1rem 1.5rem' }}>
+
+        {/* Drag handle */}
+        <div
+          onPointerDown={onDividerPointerDown}
+          onPointerMove={onDividerPointerMove}
+          onPointerUp={onDividerPointerUp}
+          onPointerCancel={onDividerPointerUp}
+          style={{
+            height: '8px',
+            flexShrink: 0,
+            cursor: 'row-resize',
+            background: 'var(--color-border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'background 0.15s',
+            userSelect: 'none',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-forest)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'var(--color-border)')}
+        >
+          {/* grip dots */}
+          <div style={{ display: 'flex', gap: '3px', pointerEvents: 'none' }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} style={{ width: '3px', height: '3px', borderRadius: '50%', background: 'rgba(100,90,80,0.45)' }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Flags panel — fills remaining space */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column' }}>
           <FlagPanel flags={flags} checking={checking} />
         </div>
       </div>

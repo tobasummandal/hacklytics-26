@@ -12,7 +12,11 @@ export default function FlagPanel({ flags, checking }: FlagPanelProps) {
 
   if (checking) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
+      <div style={{
+        height: '100%', minHeight: '120px',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
         <Loader style={{ color: 'var(--color-forest)' }} className="w-8 h-8 animate-spin mb-3" />
         <p style={{ color: 'var(--color-ink-light)', fontSize: '0.875rem' }}>checking consistency…</p>
       </div>
@@ -21,7 +25,11 @@ export default function FlagPanel({ flags, checking }: FlagPanelProps) {
 
   if (flags.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
+      <div style={{
+        height: '100%', minHeight: '120px',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
         <AlertCircle style={{ color: 'var(--color-ink-light)' }} className="w-10 h-10 mb-3" />
         <p style={{ color: 'var(--color-ink-light)', fontSize: '0.875rem' }}>no contradictions detected.</p>
         <p style={{ fontSize: '0.8rem', color: 'var(--color-ink-light)', marginTop: '0.4rem', fontStyle: 'italic' }}>

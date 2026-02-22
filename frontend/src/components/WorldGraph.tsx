@@ -7,6 +7,7 @@ import { GraphData } from '../api/client'
 interface WorldGraphProps {
   data: GraphData | null
   loading: boolean
+  graphHeight?: number
 }
 
 const NODE_TYPES = [
@@ -19,7 +20,7 @@ const NODE_TYPES = [
   { color: '#16a34a', label: 'creature' },
 ]
 
-export default function WorldGraph({ data, loading }: WorldGraphProps) {
+export default function WorldGraph({ data, loading, graphHeight }: WorldGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const networkRef = useRef<Network | null>(null)
@@ -78,6 +79,7 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
     )
 
     const options = {
+      autoResize: true,
       nodes: { shape: 'dot', scaling: { min: 10, max: 30 } },
       edges: { width: 0.5, smooth: { enabled: true, type: 'continuous', roundness: 0.5 } },
       physics: {
@@ -92,6 +94,11 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
 
     return () => { if (networkRef.current) networkRef.current.destroy() }
   }, [data, activeTypes])
+
+  // Fluid resize: just redraw without rebuilding the network
+  useEffect(() => {
+    if (networkRef.current) networkRef.current.redraw()
+  }, [graphHeight])
 
   // track fullscreen state changes (including Esc key which browser handles natively)
   useEffect(() => {
@@ -121,7 +128,12 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
+      <div style={{
+        height: `${Math.max(120, (graphHeight ?? 320) - 110)}px`,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        transition: 'height 0.02s linear',
+      }}>
         <Loader style={{ color: 'var(--color-forest)' }} className="w-12 h-12 animate-spin mb-4" />
         <p style={{ color: 'var(--color-ink-light)' }}>building world topology...</p>
       </div>
@@ -130,7 +142,12 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
 
   if (!data || data.nodes.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
+      <div style={{
+        height: `${Math.max(120, (graphHeight ?? 320) - 110)}px`,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        transition: 'height 0.02s linear',
+      }}>
         <NetworkIcon style={{ color: 'var(--color-ink-light)' }} className="w-12 h-12 mb-4" />
         <p style={{ color: 'var(--color-ink-light)' }}>no world data yet.</p>
         <p style={{ fontSize: '0.875rem', color: 'var(--color-ink-light)', marginTop: '0.5rem' }}>
@@ -218,8 +235,9 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
 
         <div ref={containerRef} style={{
           width: '100%',
-          height: isFullscreen ? '100vh' : '260px',
+          height: isFullscreen ? '100vh' : `${Math.max(120, (graphHeight ?? 320) - 110)}px`,
           minWidth: 0,
+          transition: 'height 0.02s linear',
         }} />
       </div>
 
