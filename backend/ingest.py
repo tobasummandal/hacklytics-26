@@ -197,16 +197,22 @@ async def ingest(text: str, chapter: int) -> dict:
 
         # generate embeddings and push to VectorAI
         if valid_items:
-            summaries = [ec["behavioral_summary"] for _, ec in valid_items]
-            vectors = await _embed(summaries)
-            await db.vectorai.batch_upsert(
-                db.COLLECTION,
-                ids=sqlite_ids,
-                vectors=vectors,
-                payloads=[{"entity_id": char_id} for char_id, _ in valid_items],
-            )
-            await db.vectorai.flush(db.COLLECTION)
-            totals["embedding_chunks"] += len(valid_items)
+            try:
+                summaries = [ec["behavioral_summary"] for _, ec in valid_items]
+                vectors = await _embed(summaries)
+                print(f"[ingest] upserting {len(sqlite_ids)} vectors, ids={sqlite_ids}, vec_dims={[len(v) for v in vectors]}")
+                await db.vectorai.batch_upsert(
+                    db.COLLECTION,
+                    ids=sqlite_ids,
+                    vectors=vectors,
+                    payloads=[{"entity_id": char_id} for char_id, _ in valid_items],
+                )
+                await db.vectorai.flush(db.COLLECTION)
+                stats = await db.vectorai.get_collection_stats(db.COLLECTION)
+                print(f"[ingest] upsert done — collection now has {stats.vectors_count} vectors")
+                totals["embedding_chunks"] += len(valid_items)
+            except Exception as e:
+                print(f"[ingest] VectorAI upsert FAILED: {type(e).__name__}: {e}")
 
     print(
         f"[ingest] done — {totals['entities']} entities, "

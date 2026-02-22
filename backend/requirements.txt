@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+google-genai
+aiosqlite
+python-dotenv
+pydantic
+numpy
+# actiancortex — not on PyPI, install from hackathon wheel:
+# pip install actiancortex-*.whl
