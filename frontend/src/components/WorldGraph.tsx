@@ -9,17 +9,53 @@ interface WorldGraphProps {
   loading: boolean
 }
 
+const NODE_TYPES = [
+  { color: '#ec4899', label: 'character' },
+  { color: '#2563eb', label: 'location' },
+  { color: '#9333ea', label: 'faction' },
+  { color: '#f59e0b', label: 'event' },
+  { color: '#b45309', label: 'object' },
+  { color: '#6b7280', label: 'concept' },
+  { color: '#16a34a', label: 'creature' },
+]
+
 export default function WorldGraph({ data, loading }: WorldGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const networkRef = useRef<Network | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [activeTypes, setActiveTypes] = useState<Set<string>>(
+    () => new Set(NODE_TYPES.map(t => t.label))
+  )
+
+  const toggleType = (label: string) => {
+    setActiveTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(label)) {
+        // Don't allow deselecting the last active type
+        if (next.size === 1) return prev
+        next.delete(label)
+      } else {
+        next.add(label)
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!data || !containerRef.current || data.nodes.length === 0) return
 
+    // Filter nodes by active types
+    const visibleNodes = data.nodes.filter(n => activeTypes.has(n.type))
+    const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
+
+    // Filter edges — both endpoints must be visible
+    const visibleEdges = data.edges.filter(
+      e => visibleNodeIds.has(e.from_node) && visibleNodeIds.has(e.to_node)
+    )
+
     const nodes = new DataSet(
-      data.nodes.map(n => ({
+      visibleNodes.map(n => ({
         id: n.id,
         label: n.label,
         color: n.color,
@@ -29,7 +65,7 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
     )
 
     const edges = new DataSet(
-      data.edges.map((e, i) => ({
+      visibleEdges.map((e, i) => ({
         id: i,
         from: e.from_node,
         to: e.to_node,
@@ -55,7 +91,7 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
     networkRef.current = new Network(containerRef.current, { nodes, edges }, options)
 
     return () => { if (networkRef.current) networkRef.current.destroy() }
-  }, [data])
+  }, [data, activeTypes])
 
   // track fullscreen state changes (including Esc key which browser handles natively)
   useEffect(() => {
@@ -111,21 +147,47 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
           fontSize: '1.25rem', fontWeight: 600,
           color: 'var(--color-ink)', fontFamily: "'Crimson Text', serif"
         }}>world topology map</h3>
-        <div className="flex flex-wrap gap-x-4 gap-y-1" style={{ fontSize: '0.75rem' }}>
-          {[
-            { color: '#ec4899', label: 'character' },
-            { color: '#2563eb', label: 'location' },
-            { color: '#9333ea', label: 'faction' },
-            { color: '#f59e0b', label: 'event' },
-            { color: '#b45309', label: 'object' },
-            { color: '#6b7280', label: 'concept' },
-            { color: '#16a34a', label: 'creature' },
-          ].map(({ color, label }) => (
-            <div key={label} className="flex items-center space-x-1">
-              <div style={{ width: '0.75rem', height: '0.75rem', borderRadius: '50%', background: color }} />
-              <span style={{ color: 'var(--color-ink-light)' }}>{label}</span>
-            </div>
-          ))}
+
+        {/* Toggleable legend */}
+        <div className="flex flex-wrap gap-x-3 gap-y-1" style={{ fontSize: '0.75rem' }}>
+          {NODE_TYPES.map(({ color, label }) => {
+            const active = activeTypes.has(label)
+            return (
+              <button
+                key={label}
+                onClick={() => toggleType(label)}
+                title={active ? `hide ${label}s` : `show ${label}s`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.3rem',
+                  background: 'none', border: 'none', padding: '0.2rem 0.35rem',
+                  borderRadius: '3px', cursor: 'pointer',
+                  opacity: active ? 1 : 0.35,
+                  transition: 'opacity 0.15s ease, background 0.15s ease',
+                  outline: active ? `1px solid ${color}22` : 'none',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLButtonElement).style.background = `${color}18`
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'none'
+                }}
+              >
+                <div style={{
+                  width: '0.65rem', height: '0.65rem', borderRadius: '50%',
+                  background: active ? color : '#9ca3af',
+                  transition: 'background 0.15s ease',
+                  flexShrink: 0,
+                }} />
+                <span style={{
+                  color: active ? 'var(--color-ink)' : 'var(--color-ink-light)',
+                  transition: 'color 0.15s ease',
+                  userSelect: 'none',
+                }}>
+                  {label}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -165,7 +227,7 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
         fontSize: '0.875rem', color: 'var(--color-ink-light)',
         textAlign: 'center', fontStyle: 'italic'
       }}>
-        nodes are entities · edges are relationships · updates as you write
+        nodes are entities · edges are relationships · click a type to toggle visibility
       </div>
     </div>
   )
