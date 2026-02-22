@@ -127,7 +127,6 @@ async def _build_character_context(conn, name: str, scene_chars: list[str], quer
         query_vec,
         Filter().must(Field("entity_id").eq(eid)),
         top_k=3,
-        with_payload=True,
     )
     chunk_ids = [r.id for r in vresults]
     moments = []

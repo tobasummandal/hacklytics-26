@@ -11,38 +11,38 @@ import db
 gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 EXTRACTION_PROMPT = """
-You are a story analysis AI. Analyze this passage and return ONLY valid JSON 
+You are a story analysis AI. Analyze this passage and return ONLY valid JSON
 with no markdown, no explanation, no trailing commas.
 
-{
+{{
   "entities": [
-    {
+    {{
       "type": "character|location|event|object|faction|creature|concept",
       "name": "EntityName",
       "attributes": [
-        {
+        {{
           "type": "trait|belief|fear|desire|flaw|appearance|speech_pattern|habit|skill|weakness|secret|motivation|occupation|social_status|origin|atmosphere|outcome|power|goal",
           "value": "a concise phrase or sentence describing this attribute"
-        }
+        }}
       ]
-    }
+    }}
   ],
   "relationships": [
-    {
+    {{
       "from": "EntityName",
       "to": "EntityName",
       "type": "loves|hates|distrusts|fears|respects|betrayed|member_of|leads|owns|caused|witnessed|located_in|controls|enemy_of|ally_of",
       "description": "only include if the relationship has specific nuance beyond the type label — e.g. 'distrusts because of past betrayal' or 'loves but keeps it secret'. Leave as null if the type label is self-explanatory."
-    }
+    }}
   ],
   "embedding_chunks": [
-    {
+    {{
       "primary_character": "CharacterName",
       "scene_type": "confrontation|dialogue|internal|action|emotional",
       "behavioral_summary": "A natural paragraph describing what this character reveals about themselves in this moment. Write it to capture their emotional state, how they respond to the situation, what they prioritize, and how they communicate. Do not follow a fixed template — write what is most revealing about this character in this specific moment."
-    }
+    }}
   ]
-}
+}}
 
 --- RULES FOR ENTITIES ---
 
@@ -80,8 +80,8 @@ Passage to analyze:
 {passage}"""
 
 
-def chunk_text(text: str, max_words: int = 350) -> list[str]:
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+def chunk_text(text: str, max_words: int = 150) -> list[str]:
+    paragraphs = [p.strip() for p in re.split(r"\n+", text) if p.strip()]
     chunks, current, count = [], [], 0
     for para in paragraphs:
         words = len(para.split())

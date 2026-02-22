@@ -56,6 +56,48 @@ async def check_endpoint(req: CheckRequest):
     return await consistency_check(req.text, req.characters_present, req.chapter)
 
 
+@app.get("/graph")
+async def full_graph_endpoint():
+    async with db.get_db() as conn:
+        entities = await (await conn.execute(
+            "SELECT id, type, name FROM entities"
+        )).fetchall()
+        relationships = await (await conn.execute(
+            "SELECT from_id, to_id, type, description FROM relationships"
+        )).fetchall()
+
+    type_colors = {
+        "character": "#ec4899",
+        "location": "#2563eb",
+        "faction": "#9333ea",
+        "event": "#f59e0b",
+        "concept": "#6b7280",
+        "object": "#b45309",
+        "creature": "#16a34a",
+    }
+
+    nodes = [
+        {
+            "id": str(e["id"]),
+            "label": e["name"],
+            "type": e["type"],
+            "color": type_colors.get(e["type"], "#6b7280"),
+            "size": 20 if e["type"] == "character" else 12,
+        }
+        for e in entities
+    ]
+    edges = [
+        {
+            "from_node": str(r["from_id"]),
+            "to_node": str(r["to_id"]),
+            "label": r["type"],
+            "weight": 1.0,
+        }
+        for r in relationships
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 @app.get("/graph/{character_name}")
 async def graph_endpoint(character_name: str):
     data = await get_graph(character_name)

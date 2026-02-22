@@ -1,89 +1,94 @@
-import { useState, useEffect, useRef } from 'react'
-import { Loader, Upload } from 'lucide-react'
-import { World, InconsistencyReport, LoopholeReport, GraphData } from '../types'
-import { api } from '../api/client'
-import InconsistencyPanel from './InconsistencyPanel'
-import LoopholePanel from './LoopholePanel'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Loader } from 'lucide-react'
+import { api, Flag, GraphData } from '../api/client'
+import FlagPanel from './FlagPanel'
 import WorldGraph from './WorldGraph'
 
-interface DashboardProps {
-  world: World
-  wsMessage?: any
+const DEBOUNCE_CHECK_MS = 2500
+const DEBOUNCE_INGEST_MS = 6000
+const TAIL_LINES = 4
+
+function lastNLines(text: string, n: number): string {
+  const lines = text.split('\n').filter(l => l.trim())
+  return lines.slice(-n).join('\n')
 }
 
-export default function Dashboard({ world, wsMessage }: DashboardProps) {
+export default function Dashboard() {
   const [text, setText] = useState('')
-  const [analyzing, setAnalyzing] = useState(false)
-  const [analyzed, setAnalyzed] = useState(false)
-  const [inconsistencies, setInconsistencies] = useState<InconsistencyReport[]>([])
-  const [loopholes, setLoopholes] = useState<LoopholeReport[]>([])
+  const [chapter, setChapter] = useState(1)
+  const [flags, setFlags] = useState<Flag[]>([])
   const [graphData, setGraphData] = useState<GraphData | null>(null)
-  const [loading, setLoading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [checking, setChecking] = useState(false)
+  const [ingesting, setIngesting] = useState(false)
+  const [ingestSummary, setIngestSummary] = useState<string | null>(null)
 
-  const loadData = async () => {
-    setLoading(true)
+  const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ingestTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastIngestedLength = useRef(0)
+
+  const refreshGraph = useCallback(async () => {
     try {
-      const [incData, loopData, graph] = await Promise.all([
-        api.getInconsistencies(world.id),
-        api.getLoopholes(world.id),
-        api.getWorldGraph(world.id),
-      ])
-      setInconsistencies(incData)
-      setLoopholes(loopData)
-      setGraphData(graph)
+      const g = await api.getGraph()
+      setGraphData(g)
+    } catch {}
+  }, [])
+
+  const runCheck = useCallback(async (currentText: string) => {
+    const tail = lastNLines(currentText, TAIL_LINES)
+    if (!tail.trim() || tail.split(' ').length < 5) return
+    setChecking(true)
+    try {
+      const present = await api.who(tail)
+      if (present.length === 0) return
+      const result = await api.check(tail, present, chapter)
+      setFlags(result)
     } catch (e) {
       console.error(e)
     } finally {
-      setLoading(false)
+      setChecking(false)
     }
-  }
+  }, [chapter])
 
-  useEffect(() => {
-    if (wsMessage?.world_id === world.id && wsMessage?.type === 'inconsistencies_detected') {
-      setAnalyzing(false)
-      setAnalyzed(true)
-      loadData()
-    }
-    if (wsMessage?.world_id === world.id && wsMessage?.type === 'error') {
-      setAnalyzing(false)
-    }
-  }, [wsMessage])
-
-  const submit = async (file: File) => {
-    setAnalyzing(true)
-    setAnalyzed(false)
+  const runIngest = useCallback(async (currentText: string) => {
+    const newText = currentText.slice(lastIngestedLength.current)
+    if (!newText.trim()) return
+    setIngesting(true)
     try {
-      await api.uploadManuscript(world.id, file)
-      // fallback reload if WS doesn't fire
-      setTimeout(() => {
-        setAnalyzing(false)
-        setAnalyzed(true)
-        loadData()
-      }, 40000)
+      const summary = await api.ingest(newText, chapter)
+      lastIngestedLength.current = currentText.length
+      setIngestSummary(`+${summary.entities} entities · +${summary.relationships} relationships`)
+      await refreshGraph()
     } catch (e) {
       console.error(e)
-      setAnalyzing(false)
+    } finally {
+      setIngesting(false)
     }
+  }, [chapter, refreshGraph])
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setText(val)
+
+    if (checkTimer.current) clearTimeout(checkTimer.current)
+    checkTimer.current = setTimeout(() => runCheck(val), DEBOUNCE_CHECK_MS)
+
+    if (ingestTimer.current) clearTimeout(ingestTimer.current)
+    ingestTimer.current = setTimeout(() => runIngest(val), DEBOUNCE_INGEST_MS)
   }
 
-  const handleAnalyze = () => {
-    if (!text.trim()) return
-    const blob = new Blob([text], { type: 'text/plain' })
-    submit(new File([blob], 'manuscript.txt', { type: 'text/plain' }))
+  const handleManualIngest = async () => {
+    if (ingestTimer.current) clearTimeout(ingestTimer.current)
+    await runIngest(text)
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) submit(file)
-  }
+  useEffect(() => { refreshGraph() }, [])
 
   const HEADER_H = 81
 
   return (
     <div style={{ display: 'flex', height: `calc(100vh - ${HEADER_H}px)`, overflow: 'hidden' }}>
 
-      {/* ── Left: Text Editor ── */}
+      {/* ── Left: Editor ── */}
       <div style={{
         width: '40%',
         display: 'flex',
@@ -98,66 +103,61 @@ export default function Dashboard({ world, wsMessage }: DashboardProps) {
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <span style={{
-            fontFamily: "'Crimson Text', serif",
-            fontSize: '1.1rem',
-            fontWeight: 600,
-            color: 'var(--color-ink)',
-          }}>Manuscript</span>
-
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.35rem',
-                padding: '0.35rem 0.75rem',
-                border: '1px solid var(--color-border)',
-                background: 'transparent',
-                borderRadius: '2px',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                color: 'var(--color-ink-light)',
-              }}
-            >
-              <Upload style={{ width: '0.875rem', height: '0.875rem' }} />
-              Upload File
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.docx"
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-            />
-
-            <button
-              onClick={handleAnalyze}
-              disabled={analyzing || !text.trim()}
-              style={{
-                padding: '0.35rem 1rem',
-                background: analyzing || !text.trim() ? 'var(--color-border)' : 'var(--color-forest)',
-                color: analyzing || !text.trim() ? 'var(--color-ink-light)' : 'white',
-                border: 'none',
-                borderRadius: '2px',
-                cursor: analyzing || !text.trim() ? 'not-allowed' : 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                letterSpacing: '0.03em',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-              }}
-            >
-              {analyzing && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
-              {analyzing ? 'Analyzing...' : 'Analyze'}
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{
+              fontFamily: "'Crimson Text', serif",
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              color: 'var(--color-ink)',
+            }}>Manuscript</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-ink-light)' }}>ch.</span>
+              <input
+                type="number"
+                min={1}
+                value={chapter}
+                onChange={e => setChapter(Number(e.target.value))}
+                style={{
+                  width: '2.5rem',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '2px',
+                  padding: '0.2rem 0.35rem',
+                  fontSize: '0.8rem',
+                  color: 'var(--color-ink)',
+                  background: 'transparent',
+                  outline: 'none',
+                }}
+              />
+            </div>
           </div>
+
+          <button
+            onClick={handleManualIngest}
+            disabled={ingesting || !text.trim()}
+            style={{
+              padding: '0.35rem 1rem',
+              background: ingesting || !text.trim() ? 'var(--color-border)' : 'var(--color-forest)',
+              color: ingesting || !text.trim() ? 'var(--color-ink-light)' : 'white',
+              border: 'none',
+              borderRadius: '2px',
+              cursor: ingesting || !text.trim() ? 'not-allowed' : 'pointer',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              letterSpacing: '0.03em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+            }}
+          >
+            {ingesting && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
+            {ingesting ? 'Ingesting...' : 'Ingest'}
+          </button>
         </div>
 
         <textarea
           value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder="Paste or type your manuscript here..."
+          onChange={handleChange}
+          placeholder="Write your story here. Consistency checks run automatically as you write."
           style={{
             flex: 1,
             resize: 'none',
@@ -172,41 +172,36 @@ export default function Dashboard({ world, wsMessage }: DashboardProps) {
           }}
         />
 
-        {analyzed && (
-          <div style={{
-            padding: '0.75rem 1.5rem',
-            borderTop: '1px solid var(--color-border)',
-            fontSize: '0.8rem',
-            color: 'var(--color-forest)',
-            fontStyle: 'italic',
-          }}>
-            Analysis complete · {inconsistencies.length} inconsistenc{inconsistencies.length !== 1 ? 'ies' : 'y'} · {loopholes.length} loophole{loopholes.length !== 1 ? 's' : ''}
-          </div>
-        )}
+        <div style={{
+          padding: '0.6rem 1.5rem',
+          borderTop: '1px solid var(--color-border)',
+          fontSize: '0.75rem',
+          color: 'var(--color-ink-light)',
+          fontStyle: 'italic',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          minHeight: '2.25rem',
+        }}>
+          {checking && <><Loader style={{ width: '0.75rem', height: '0.75rem', animation: 'spin 1s linear infinite', color: 'var(--color-forest)' }} /> checking consistency…</>}
+          {ingesting && !checking && <><Loader style={{ width: '0.75rem', height: '0.75rem', animation: 'spin 1s linear infinite', color: 'var(--color-forest)' }} /> ingesting…</>}
+          {!checking && !ingesting && ingestSummary && <span style={{ color: 'var(--color-forest)' }}>{ingestSummary}</span>}
+        </div>
       </div>
 
       {/* ── Right: Visualizations ── */}
       <div style={{ flex: 1, overflowY: 'auto', background: 'var(--color-parchment)' }}>
-
         <div style={{
           borderBottom: '1px solid var(--color-border)',
           background: 'var(--color-paper)',
           padding: '1.25rem 1.5rem',
         }}>
-          <WorldGraph data={graphData} loading={loading} />
-        </div>
-
-        <div style={{
-          borderBottom: '1px solid var(--color-border)',
-          padding: '1.25rem 1.5rem',
-        }}>
-          <InconsistencyPanel inconsistencies={inconsistencies} loading={loading} />
+          <WorldGraph data={graphData} loading={false} />
         </div>
 
         <div style={{ padding: '1.25rem 1.5rem' }}>
-          <LoopholePanel loopholes={loopholes} loading={loading} />
+          <FlagPanel flags={flags} checking={checking} />
         </div>
-
       </div>
     </div>
   )
