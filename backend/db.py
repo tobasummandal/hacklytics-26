@@ -89,3 +89,7 @@ async def init_vectorai() -> None:
 async def close_vectorai() -> None:
     if vectorai:
         await vectorai.__aexit__(None, None, None)
+
+
+def vectorai_ready() -> bool:
+    return vectorai is not None

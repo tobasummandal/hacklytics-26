@@ -67,7 +67,7 @@ export default function WorldGraph({ data, loading }: WorldGraphProps) {
   // any key press exits fullscreen
   useEffect(() => {
     if (!isFullscreen) return
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = () => {
       if (document.fullscreenElement) document.exitFullscreen()
     }
     document.addEventListener('keydown', onKey)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Loader } from 'lucide-react'
-import { api, Flag, GraphData } from '../api/client'
+import { api, Flag, GraphData, IngestProgress } from '../api/client'
 import FlagPanel from './FlagPanel'
 import WorldGraph from './WorldGraph'
 
@@ -112,6 +112,9 @@ export default function Dashboard() {
   const [ingesting, setIngesting] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [ingestSummary, setIngestSummary] = useState<string | null>(null)
+  const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null)
+  const [ingestError, setIngestError] = useState<string | null>(null)
+  const [checkError, setCheckError] = useState<string | null>(null)
 
   const lastIngestedLength = useRef(0)
 
@@ -125,13 +128,31 @@ export default function Dashboard() {
     if (!text.trim() || text.trim().split(/\s+/).length < 5) return
     setChecking(true)
     setFlags([])
+    setCheckError(null)
     try {
       const present = await api.who(text)
-      if (present.length === 0) { setChecking(false); return }
+      if (present.length === 0) {
+        setCheckError('No known characters detected in this passage yet.')
+        setChecking(false)
+        return
+      }
       const result = await api.check(text, present, CHAPTER)
       setFlags(result)
-    } catch (e) {
+    } catch (e: any) {
       console.error('[check]', e)
+      const detail = e?.response?.data?.detail
+      if (typeof detail === 'string') {
+        setCheckError(detail)
+      } else if (detail?.message) {
+        const retry = detail?.retry_after_seconds
+        setCheckError(
+          retry
+            ? `${detail.message} Retry in ~${Math.ceil(Number(retry))}s.`
+            : detail.message
+        )
+      } else {
+        setCheckError('Check failed. Verify Gemini API key, quota, and backend logs.')
+      }
     } finally {
       setChecking(false)
     }
@@ -141,15 +162,37 @@ export default function Dashboard() {
     const slice = storyText.slice(lastIngestedLength.current)
     if (!slice.trim()) return
     setIngesting(true)
+    setIngestError(null)
+    setIngestSummary(null)
+    setIngestProgress({ percent: 0, phase: 'queued', message: 'Queued for ingestion' })
+    let terminalState: 'completed' | 'failed' | null = null
     try {
-      const summary = await api.ingest(slice, CHAPTER)
-      lastIngestedLength.current = storyText.length
-      setIngestSummary(`+${summary.entities} entities · +${summary.relationships} rels · +${summary.embedding_chunks} chunks`)
-      await refreshGraph()
+      const started = await api.startIngest(slice, CHAPTER)
+      let complete = false
+      while (!complete) {
+        const status = await api.getIngestStatus(started.job_id)
+        if (status.progress) setIngestProgress(status.progress)
+        if (status.status === 'completed' && status.result) {
+          const summary = status.result
+          lastIngestedLength.current = storyText.length
+          setIngestSummary(`+${summary.entities} entities · +${summary.relationships} rels · +${summary.embedding_chunks} chunks`)
+          await refreshGraph()
+          terminalState = 'completed'
+          complete = true
+        } else if (status.status === 'failed') {
+          setIngestError(status.error?.message || 'Ingest failed. Check backend logs for details.')
+          terminalState = 'failed'
+          complete = true
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 700))
+        }
+      }
     } catch (e) {
       console.error('[ingest]', e)
+      setIngestError('Unable to start ingest job. Check backend connectivity.')
     } finally {
       setIngesting(false)
+      if (terminalState) setIngestProgress(null)
     }
   }
 
@@ -161,6 +204,8 @@ export default function Dashboard() {
       setNewText('')
       setFlags([])
       setIngestSummary(null)
+      setIngestProgress(null)
+      setIngestError(null)
       lastIngestedLength.current = 0
       setGraphData(null)
     } catch (e) {
@@ -171,8 +216,12 @@ export default function Dashboard() {
   }
 
   const handleNewTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setNewText(e.target.value)
+    const val = e.target.value
+    setNewText(val)
     setFlags([])
+    if (!val.trim()) {
+      setCheckError(null)
+    }
   }
 
   useEffect(() => { refreshGraph() }, [])
@@ -243,16 +292,57 @@ export default function Dashboard() {
 
         {/* Status bar */}
         <div style={{
-          padding: '0.4rem 1.5rem',
+          padding: '0.55rem 1.5rem',
           borderTop: '1px solid var(--color-border)',
-          fontSize: '0.75rem', color: 'var(--color-ink-light)',
-          fontStyle: 'italic', flexShrink: 0,
-          minHeight: '1.75rem', display: 'flex', alignItems: 'center',
+          fontSize: '0.75rem',
+          color: 'var(--color-ink-light)',
+          flexShrink: 0,
+          minHeight: '2.8rem',
         }}>
-          {ingesting
-            ? <><Loader style={{ width: '0.7rem', height: '0.7rem', animation: 'spin 1s linear infinite', color: 'var(--color-forest)', marginRight: '0.4rem' }} />ingesting…</>
-            : ingestSummary && <span style={{ color: 'var(--color-forest)' }}>{ingestSummary}</span>
-          }
+          {(ingesting || ingestProgress) && (
+            <div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '0.3rem',
+                color: 'var(--color-ink-light)',
+              }}>
+                <span>
+                  {ingestProgress?.message || 'Ingesting manuscript…'}
+                  {ingestProgress?.chunk_index && ingestProgress?.total_chunks
+                    ? ` (${ingestProgress.chunk_index}/${ingestProgress.total_chunks})`
+                    : ''}
+                </span>
+                <span>{Math.max(0, Math.min(100, Math.round(ingestProgress?.percent || 0)))}%</span>
+              </div>
+              <div style={{
+                width: '100%',
+                height: '8px',
+                background: 'rgba(107,114,128,0.2)',
+                borderRadius: '999px',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${Math.max(0, Math.min(100, ingestProgress?.percent || 0))}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #2d6a1f 0%, #4a7c2a 100%)',
+                  transition: 'width 0.35s ease',
+                }} />
+              </div>
+              {ingestProgress?.totals && (
+                <div style={{ marginTop: '0.3rem', fontStyle: 'italic' }}>
+                  entities {ingestProgress.totals.entities} · rels {ingestProgress.totals.relationships} · chunks {ingestProgress.totals.embedding_chunks}
+                </div>
+              )}
+            </div>
+          )}
+          {!ingesting && ingestSummary && (
+            <span style={{ color: 'var(--color-forest)', fontStyle: 'italic' }}>{ingestSummary}</span>
+          )}
+          {!ingesting && ingestError && (
+            <span style={{ color: '#9a3412' }}>{ingestError}</span>
+          )}
         </div>
 
         {/* New writing header */}
@@ -288,6 +378,17 @@ export default function Dashboard() {
           highlights={highlights}
           placeholder="Write your new paragraph here. Hit 'check' to run consistency analysis."
         />
+        {checkError && (
+          <div style={{
+            padding: '0.5rem 1.5rem',
+            borderTop: '1px solid var(--color-border)',
+            fontSize: '0.8rem',
+            color: '#9a3412',
+            background: 'rgba(154,52,18,0.06)',
+          }}>
+            {checkError}
+          </div>
+        )}
       </div>
 
       {/* ── Right: Graph + Flags ── */}

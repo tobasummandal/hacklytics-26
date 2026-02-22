@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from typing import Awaitable, Callable
 
 from google import genai
 from google.genai import types
@@ -186,18 +187,61 @@ async def _upsert_relationship(db_conn, from_id: int, to_id: int, rtype: str, de
         )
 
 
-async def ingest(text: str, chapter: int) -> dict:
+ProgressCallback = Callable[[dict], Awaitable[None]]
+
+
+async def _emit_progress(progress_cb: ProgressCallback | None, payload: dict) -> None:
+    if progress_cb:
+        await progress_cb(payload)
+
+
+def _chunk_progress_start(index: int, total: int) -> int:
+    # Reserve first 5% for setup and final 5% for completion.
+    return 5 + int(((index - 1) / max(total, 1)) * 90)
+
+
+async def ingest(text: str, chapter: int, progress_cb: ProgressCallback | None = None) -> dict:
     chunks = chunk_text(text)
     totals = {"entities": 0, "attributes": 0, "relationships": 0, "embedding_chunks": 0}
     prev_characters: list[str] | None = None
+    total_chunks = len(chunks)
+
+    await _emit_progress(progress_cb, {
+        "percent": 2,
+        "phase": "preparing",
+        "message": "Chunking manuscript text",
+        "chunk_index": 0,
+        "total_chunks": total_chunks,
+        "totals": totals,
+    })
+
+    if total_chunks == 0:
+        await _emit_progress(progress_cb, {
+            "percent": 100,
+            "phase": "completed",
+            "message": "No text to ingest",
+            "chunk_index": 0,
+            "total_chunks": 0,
+            "totals": totals,
+        })
+        return totals
 
     for i, chunk in enumerate(chunks):
-        print(f"[ingest] chunk {i+1}/{len(chunks)} ({len(chunk.split())} words)")
+        chunk_num = i + 1
+        start_pct = _chunk_progress_start(chunk_num, total_chunks)
+        print(f"[ingest] chunk {chunk_num}/{total_chunks} ({len(chunk.split())} words)")
+        await _emit_progress(progress_cb, {
+            "percent": min(start_pct + 8, 95),
+            "phase": "extracting",
+            "message": f"Extracting entities and relationships from chunk {chunk_num}/{total_chunks}",
+            "chunk_index": chunk_num,
+            "total_chunks": total_chunks,
+            "totals": totals,
+        })
         extracted = await _extract(chunk, prev_characters=prev_characters)
         prev_characters = extracted.get("characters_present", [])
         if prev_characters:
             print(f"[ingest] characters_present: {prev_characters}")
-
         name_to_id: dict[str, int] = {}
 
         async with db.get_db() as conn:
@@ -235,27 +279,55 @@ async def ingest(text: str, chapter: int) -> dict:
                 valid_items.append((char_id, ec))
 
             await conn.commit()
+            await _emit_progress(progress_cb, {
+                "percent": min(start_pct + 45, 95),
+                "phase": "writing_graph",
+                "message": f"Stored graph data for chunk {chunk_num}/{total_chunks}",
+                "chunk_index": chunk_num,
+                "total_chunks": total_chunks,
+                "totals": totals,
+            })
 
         # generate embeddings and push to VectorAI
         if valid_items:
+            await _emit_progress(progress_cb, {
+                "percent": min(start_pct + 65, 95),
+                "phase": "embedding",
+                "message": f"Generating embeddings for chunk {chunk_num}/{total_chunks}",
+                "chunk_index": chunk_num,
+                "total_chunks": total_chunks,
+                "totals": totals,
+            })
             summaries = [ec["behavioral_summary"] for _, ec in valid_items]
             vectors = await _embed(summaries)
-            for attempt in range(2):
-                try:
-                    await db.vectorai.batch_upsert(
-                        db.COLLECTION,
-                        ids=sqlite_ids,
-                        vectors=vectors,
-                        payloads=[{"entity_id": char_id} for char_id, _ in valid_items],
-                    )
-                    await db.vectorai.flush(db.COLLECTION)
-                    totals["embedding_chunks"] += len(valid_items)
-                    print(f"[ingest] upserted {len(sqlite_ids)} vectors, ids={sqlite_ids}")
-                    break
-                except Exception as e:
-                    print(f"[ingest] VectorAI attempt {attempt+1} failed: {type(e).__name__}: {e}")
-                    if attempt == 1:
-                        print(f"[ingest] giving up on chunk vectors")
+            if db.vectorai_ready():
+                for attempt in range(2):
+                    try:
+                        await db.vectorai.batch_upsert(
+                            db.COLLECTION,
+                            ids=sqlite_ids,
+                            vectors=vectors,
+                            payloads=[{"entity_id": char_id} for char_id, _ in valid_items],
+                        )
+                        await db.vectorai.flush(db.COLLECTION)
+                        totals["embedding_chunks"] += len(valid_items)
+                        print(f"[ingest] upserted {len(sqlite_ids)} vectors, ids={sqlite_ids}")
+                        break
+                    except Exception as e:
+                        print(f"[ingest] VectorAI attempt {attempt+1} failed: {type(e).__name__}: {e}")
+                        if attempt == 1:
+                            print("[ingest] giving up on chunk vectors")
+            else:
+                print("[ingest] VectorAI unavailable; skipping vector upsert")
+
+        await _emit_progress(progress_cb, {
+            "percent": min(start_pct + 90, 95),
+            "phase": "chunk_complete",
+            "message": f"Finished chunk {chunk_num}/{total_chunks}",
+            "chunk_index": chunk_num,
+            "total_chunks": total_chunks,
+            "totals": totals,
+        })
 
     print(
         f"[ingest] done — {totals['entities']} entities, "
@@ -263,4 +335,12 @@ async def ingest(text: str, chapter: int) -> dict:
         f"{totals['relationships']} relationships, "
         f"{totals['embedding_chunks']} embedding chunks"
     )
+    await _emit_progress(progress_cb, {
+        "percent": 100,
+        "phase": "completed",
+        "message": "Ingestion complete",
+        "chunk_index": total_chunks,
+        "total_chunks": total_chunks,
+        "totals": totals,
+    })
     return totals

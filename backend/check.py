@@ -133,22 +133,25 @@ async def _build_character_context(conn, name: str, scene_chars: list[str], quer
         )).fetchall():
             depth2.append({"via": "scene", "rel_type": r["type"], "target": r["name"], "description": r["description"]})
 
-    # similar past moments via VectorAI
-    vresults = await db.vectorai.search_filtered(
-        db.COLLECTION,
-        query_vec,
-        Filter().must(Field("entity_id").eq(eid)),
-        top_k=3,
-    )
-    chunk_ids = [r.id for r in vresults]
     moments = []
-    if chunk_ids:
-        placeholders = ",".join("?" * len(chunk_ids))
-        rows = await (await conn.execute(
-            f"SELECT behavioral_summary FROM embedding_chunks WHERE id IN ({placeholders})",
-            chunk_ids,
-        )).fetchall()
-        moments = [r["behavioral_summary"] for r in rows]
+    if db.vectorai_ready():
+        try:
+            vresults = await db.vectorai.search_filtered(
+                db.COLLECTION,
+                query_vec,
+                Filter().must(Field("entity_id").eq(eid)),
+                top_k=3,
+            )
+            chunk_ids = [r.id for r in vresults]
+            if chunk_ids:
+                placeholders = ",".join("?" * len(chunk_ids))
+                rows = await (await conn.execute(
+                    f"SELECT behavioral_summary FROM embedding_chunks WHERE id IN ({placeholders})",
+                    chunk_ids,
+                )).fetchall()
+                moments = [r["behavioral_summary"] for r in rows]
+        except Exception as e:
+            print(f"[check] VectorAI search skipped ({type(e).__name__}): {e}")
 
     return {
         "name": name,
