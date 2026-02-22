@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import db
@@ -19,6 +20,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Story Consistency API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class IngestRequest(BaseModel):
@@ -115,5 +123,5 @@ async def reset():
     # also clear VectorAI collection
     await db.vectorai.delete_collection(db.COLLECTION)
     await db.vectorai.create_collection(
-        name=db.COLLECTION, dimension=1536, distance_metric=db.DistanceMetric.COSINE
+        name=db.COLLECTION, dimension=3072, distance_metric=db.DistanceMetric.COSINE
     )

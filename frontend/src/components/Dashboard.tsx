@@ -4,201 +4,218 @@ import { api, Flag, GraphData } from '../api/client'
 import FlagPanel from './FlagPanel'
 import WorldGraph from './WorldGraph'
 
-const DEBOUNCE_CHECK_MS = 2500
-const DEBOUNCE_INGEST_MS = 6000
-const TAIL_LINES = 4
-
-function lastNLines(text: string, n: number): string {
-  const lines = text.split('\n').filter(l => l.trim())
-  return lines.slice(-n).join('\n')
-}
+const CHAPTER = 1
 
 export default function Dashboard() {
-  const [text, setText] = useState('')
-  const [chapter, setChapter] = useState(1)
+  const [storyText, setStoryText] = useState('')
+  const [newText, setNewText] = useState('')
   const [flags, setFlags] = useState<Flag[]>([])
   const [graphData, setGraphData] = useState<GraphData | null>(null)
   const [checking, setChecking] = useState(false)
   const [ingesting, setIngesting] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [ingestSummary, setIngestSummary] = useState<string | null>(null)
 
-  const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const ingestTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastIngestedLength = useRef(0)
 
   const refreshGraph = useCallback(async () => {
-    try {
-      const g = await api.getGraph()
-      setGraphData(g)
-    } catch {}
+    try { setGraphData(await api.getGraph()) } catch {}
   }, [])
 
-  const runCheck = useCallback(async (currentText: string) => {
-    const tail = lastNLines(currentText, TAIL_LINES)
-    if (!tail.trim() || tail.split(' ').length < 5) return
+  const runCheck = useCallback(async (text: string) => {
+    if (!text.trim() || text.trim().split(/\s+/).length < 5) return
     setChecking(true)
+    setFlags([])
     try {
-      const present = await api.who(tail)
-      if (present.length === 0) return
-      const result = await api.check(tail, present, chapter)
+      const present = await api.who(text)
+      if (present.length === 0) { setChecking(false); return }
+      const result = await api.check(text, present, CHAPTER)
       setFlags(result)
     } catch (e) {
-      console.error(e)
+      console.error('[check]', e)
     } finally {
       setChecking(false)
     }
-  }, [chapter])
+  }, [])
 
-  const runIngest = useCallback(async (currentText: string) => {
-    const newText = currentText.slice(lastIngestedLength.current)
-    if (!newText.trim()) return
+  const handleIngest = async () => {
+    const slice = storyText.slice(lastIngestedLength.current)
+    if (!slice.trim()) return
     setIngesting(true)
     try {
-      const summary = await api.ingest(newText, chapter)
-      lastIngestedLength.current = currentText.length
-      setIngestSummary(`+${summary.entities} entities · +${summary.relationships} relationships`)
+      const summary = await api.ingest(slice, CHAPTER)
+      lastIngestedLength.current = storyText.length
+      setIngestSummary(`+${summary.entities} entities · +${summary.relationships} rels · +${summary.embedding_chunks} chunks`)
       await refreshGraph()
     } catch (e) {
-      console.error(e)
+      console.error('[ingest]', e)
     } finally {
       setIngesting(false)
     }
-  }, [chapter, refreshGraph])
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value
-    setText(val)
-
-    if (checkTimer.current) clearTimeout(checkTimer.current)
-    checkTimer.current = setTimeout(() => runCheck(val), DEBOUNCE_CHECK_MS)
-
-    if (ingestTimer.current) clearTimeout(ingestTimer.current)
-    ingestTimer.current = setTimeout(() => runIngest(val), DEBOUNCE_INGEST_MS)
   }
 
-  const handleManualIngest = async () => {
-    if (ingestTimer.current) clearTimeout(ingestTimer.current)
-    await runIngest(text)
+  const handleReset = async () => {
+    setResetting(true)
+    try {
+      await api.reset()
+      setStoryText('')
+      setNewText('')
+      setFlags([])
+      setIngestSummary(null)
+      lastIngestedLength.current = 0
+      setGraphData(null)
+    } catch (e) {
+      console.error('[reset]', e)
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  const handleNewTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setNewText(val)
+    if (!val.trim()) setFlags([])
   }
 
   useEffect(() => { refreshGraph() }, [])
 
   const HEADER_H = 81
 
+  const btnBase: React.CSSProperties = {
+    padding: '0.35rem 1rem',
+    border: 'none', borderRadius: '2px',
+    fontSize: '0.8rem', fontWeight: 600, letterSpacing: '0.03em',
+    display: 'flex', alignItems: 'center', gap: '0.4rem',
+  }
+
   return (
     <div style={{ display: 'flex', height: `calc(100vh - ${HEADER_H}px)`, overflow: 'hidden' }}>
 
       {/* ── Left: Editor ── */}
       <div style={{
-        width: '40%',
-        display: 'flex',
-        flexDirection: 'column',
+        width: '42%',
+        display: 'flex', flexDirection: 'column',
         borderRight: '1px solid var(--color-border)',
-        background: 'var(--color-paper)',
+        background: 'var(--color-paper)', overflow: 'hidden',
       }}>
-        <div style={{
-          padding: '1.25rem 1.5rem 0.75rem',
-          borderBottom: '1px solid var(--color-border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span style={{
-              fontFamily: "'Crimson Text', serif",
-              fontSize: '1.1rem',
-              fontWeight: 600,
-              color: 'var(--color-ink)',
-            }}>Manuscript</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--color-ink-light)' }}>ch.</span>
-              <input
-                type="number"
-                min={1}
-                value={chapter}
-                onChange={e => setChapter(Number(e.target.value))}
-                style={{
-                  width: '2.5rem',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '2px',
-                  padding: '0.2rem 0.35rem',
-                  fontSize: '0.8rem',
-                  color: 'var(--color-ink)',
-                  background: 'transparent',
-                  outline: 'none',
-                }}
-              />
-            </div>
-          </div>
 
-          <button
-            onClick={handleManualIngest}
-            disabled={ingesting || !text.trim()}
-            style={{
-              padding: '0.35rem 1rem',
-              background: ingesting || !text.trim() ? 'var(--color-border)' : 'var(--color-forest)',
-              color: ingesting || !text.trim() ? 'var(--color-ink-light)' : 'white',
-              border: 'none',
-              borderRadius: '2px',
-              cursor: ingesting || !text.trim() ? 'not-allowed' : 'pointer',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              letterSpacing: '0.03em',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-            }}
-          >
-            {ingesting && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
-            {ingesting ? 'Ingesting...' : 'Ingest'}
-          </button>
+        {/* Manuscript header */}
+        <div style={{
+          padding: '1rem 1.5rem 0.75rem',
+          borderBottom: '1px solid var(--color-border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontFamily: "'Crimson Text', serif", fontSize: '1.1rem', fontWeight: 600, color: 'var(--color-ink)' }}>
+            manuscript
+          </span>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={handleReset}
+              disabled={resetting}
+              style={{
+                ...btnBase,
+                background: resetting ? 'var(--color-border)' : '#c45a5a',
+                color: resetting ? 'var(--color-ink-light)' : 'white',
+                cursor: resetting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {resetting && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
+              {resetting ? 'resetting…' : 'reset'}
+            </button>
+            <button
+              onClick={handleIngest}
+              disabled={ingesting || !storyText.trim()}
+              style={{
+                ...btnBase,
+                background: ingesting || !storyText.trim() ? 'var(--color-border)' : 'var(--color-forest)',
+                color: ingesting || !storyText.trim() ? 'var(--color-ink-light)' : 'white',
+                cursor: ingesting || !storyText.trim() ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {ingesting && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
+              {ingesting ? 'ingesting…' : 'ingest'}
+            </button>
+          </div>
         </div>
 
+        {/* Story textarea */}
         <textarea
-          value={text}
-          onChange={handleChange}
-          placeholder="Write your story here. Consistency checks run automatically as you write."
+          value={storyText}
+          onChange={e => setStoryText(e.target.value)}
+          placeholder="Paste your existing story here. Hit 'ingest' to build the knowledge graph."
           style={{
-            flex: 1,
-            resize: 'none',
-            border: 'none',
-            outline: 'none',
+            flex: 2, resize: 'none', border: 'none', outline: 'none',
             padding: '1.25rem 1.5rem',
             fontFamily: "'Lora', Georgia, serif",
-            fontSize: '0.9rem',
-            lineHeight: '1.8',
-            color: 'var(--color-ink)',
-            background: 'var(--color-paper)',
+            fontSize: '0.875rem', lineHeight: '1.8',
+            color: 'var(--color-ink)', background: 'var(--color-paper)', minHeight: 0,
           }}
         />
 
+        {/* Status bar */}
         <div style={{
-          padding: '0.6rem 1.5rem',
+          padding: '0.4rem 1.5rem',
           borderTop: '1px solid var(--color-border)',
-          fontSize: '0.75rem',
-          color: 'var(--color-ink-light)',
-          fontStyle: 'italic',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          minHeight: '2.25rem',
+          fontSize: '0.75rem', color: 'var(--color-ink-light)',
+          fontStyle: 'italic', flexShrink: 0,
+          minHeight: '1.75rem', display: 'flex', alignItems: 'center',
         }}>
-          {checking && <><Loader style={{ width: '0.75rem', height: '0.75rem', animation: 'spin 1s linear infinite', color: 'var(--color-forest)' }} /> checking consistency…</>}
-          {ingesting && !checking && <><Loader style={{ width: '0.75rem', height: '0.75rem', animation: 'spin 1s linear infinite', color: 'var(--color-forest)' }} /> ingesting…</>}
-          {!checking && !ingesting && ingestSummary && <span style={{ color: 'var(--color-forest)' }}>{ingestSummary}</span>}
+          {ingesting
+            ? <><Loader style={{ width: '0.7rem', height: '0.7rem', animation: 'spin 1s linear infinite', color: 'var(--color-forest)', marginRight: '0.4rem' }} />ingesting…</>
+            : ingestSummary && <span style={{ color: 'var(--color-forest)' }}>{ingestSummary}</span>
+          }
         </div>
+
+        {/* New writing header */}
+        <div style={{
+          borderTop: '2px solid var(--color-border)',
+          borderBottom: '1px solid var(--color-border)',
+          padding: '1rem 1.5rem 0.75rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'var(--color-paper)', flexShrink: 0,
+        }}>
+          <span style={{ fontFamily: "'Crimson Text', serif", fontSize: '1.1rem', fontWeight: 600, color: 'var(--color-ink)' }}>
+            new writing
+          </span>
+          <button
+            onClick={() => runCheck(newText)}
+            disabled={checking || !newText.trim()}
+            style={{
+              ...btnBase,
+              background: checking || !newText.trim() ? 'var(--color-border)' : '#2d6a1f',
+              color: checking || !newText.trim() ? 'var(--color-ink-light)' : 'white',
+              cursor: checking || !newText.trim() ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {checking && <Loader style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />}
+            {checking ? 'checking…' : 'check'}
+          </button>
+        </div>
+
+        {/* New writing textarea */}
+        <textarea
+          value={newText}
+          onChange={handleNewTextChange}
+          placeholder="Write your new paragraph here. Hit 'check' to run consistency analysis."
+          style={{
+            flex: 1, resize: 'none', border: 'none', outline: 'none',
+            padding: '1.25rem 1.5rem',
+            fontFamily: "'Lora', Georgia, serif",
+            fontSize: '0.875rem', lineHeight: '1.8',
+            color: 'var(--color-ink)', background: 'var(--color-paper)', minHeight: 0,
+          }}
+        />
       </div>
 
-      {/* ── Right: Visualizations ── */}
+      {/* ── Right: Graph + Flags ── */}
       <div style={{ flex: 1, overflowY: 'auto', background: 'var(--color-parchment)' }}>
         <div style={{
           borderBottom: '1px solid var(--color-border)',
-          background: 'var(--color-paper)',
-          padding: '1.25rem 1.5rem',
+          background: 'var(--color-paper)', padding: '1.25rem 1.5rem',
         }}>
           <WorldGraph data={graphData} loading={false} />
         </div>
-
         <div style={{ padding: '1.25rem 1.5rem' }}>
           <FlagPanel flags={flags} checking={checking} />
         </div>

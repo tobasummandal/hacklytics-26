@@ -41,7 +41,16 @@ Return ONLY valid JSON:
       "suggestion": "how the author might resolve it"
     }}
   ]
-}}"""
+}}
+
+Output Rules:
+- The "evidence" field MUST contain exactly two sentences.
+- The "suggestion" field MUST contain exactly two sentences.
+- Do not output reasoning.
+- Do not output markdown.
+- Do not output commentary.
+- The response must be valid parsable JSON.
+"""
 
 
 async def _embed(text: str) -> list[float]:
