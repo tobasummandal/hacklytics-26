@@ -195,9 +195,16 @@ async def _emit_progress(progress_cb: ProgressCallback | None, payload: dict) ->
         await progress_cb(payload)
 
 
-def _chunk_progress_start(index: int, total: int) -> int:
-    # Reserve first 5% for setup and final 5% for completion.
-    return 5 + int(((index - 1) / max(total, 1)) * 90)
+def _chunk_pct(chunk_idx: int, total: int, sub: float) -> int:
+    """
+    Returns an integer percent (5-95) for chunk `chunk_idx` (0-based)
+    at sub-phase fraction `sub` (0.0 = start of chunk, 1.0 = end of chunk).
+    Each chunk gets an equal slice of the 5-95% range.
+    """
+    total = max(total, 1)
+    chunk_width = 90.0 / total
+    base = 5.0 + chunk_idx * chunk_width
+    return min(95, int(base + sub * chunk_width))
 
 
 async def ingest(text: str, chapter: int, progress_cb: ProgressCallback | None = None) -> dict:
@@ -228,10 +235,10 @@ async def ingest(text: str, chapter: int, progress_cb: ProgressCallback | None =
 
     for i, chunk in enumerate(chunks):
         chunk_num = i + 1
-        start_pct = _chunk_progress_start(chunk_num, total_chunks)
+        start_pct = _chunk_pct(i, total_chunks, 0.0)
         print(f"[ingest] chunk {chunk_num}/{total_chunks} ({len(chunk.split())} words)")
         await _emit_progress(progress_cb, {
-            "percent": min(start_pct + 8, 95),
+            "percent": start_pct,
             "phase": "extracting",
             "message": f"Extracting entities and relationships from chunk {chunk_num}/{total_chunks}",
             "chunk_index": chunk_num,
@@ -280,7 +287,7 @@ async def ingest(text: str, chapter: int, progress_cb: ProgressCallback | None =
 
             await conn.commit()
             await _emit_progress(progress_cb, {
-                "percent": min(start_pct + 45, 95),
+                "percent": _chunk_pct(i, total_chunks, 0.55),
                 "phase": "writing_graph",
                 "message": f"Stored graph data for chunk {chunk_num}/{total_chunks}",
                 "chunk_index": chunk_num,
@@ -291,7 +298,7 @@ async def ingest(text: str, chapter: int, progress_cb: ProgressCallback | None =
         # generate embeddings and push to VectorAI
         if valid_items:
             await _emit_progress(progress_cb, {
-                "percent": min(start_pct + 65, 95),
+                "percent": _chunk_pct(i, total_chunks, 0.8),
                 "phase": "embedding",
                 "message": f"Generating embeddings for chunk {chunk_num}/{total_chunks}",
                 "chunk_index": chunk_num,
@@ -321,7 +328,7 @@ async def ingest(text: str, chapter: int, progress_cb: ProgressCallback | None =
                 print("[ingest] VectorAI unavailable; skipping vector upsert")
 
         await _emit_progress(progress_cb, {
-            "percent": min(start_pct + 90, 95),
+            "percent": _chunk_pct(i, total_chunks, 1.0),
             "phase": "chunk_complete",
             "message": f"Finished chunk {chunk_num}/{total_chunks}",
             "chunk_index": chunk_num,

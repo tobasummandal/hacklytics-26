@@ -350,7 +350,14 @@ export default function Dashboard() {
                     ? ` (${ingestProgress.chunk_index}/${ingestProgress.total_chunks})`
                     : ''}
                 </span>
-                <span>{Math.max(0, Math.min(100, Math.round(ingestProgress?.percent || 0)))}%</span>
+                <span>{(() => {
+                  const ci = ingestProgress?.chunk_index
+                  const tc = ingestProgress?.total_chunks
+                  if (ci != null && tc != null && tc > 0) {
+                    return Math.min(100, Math.round((ci / tc) * 100))
+                  }
+                  return Math.max(0, Math.min(100, Math.round(ingestProgress?.percent || 0)))
+                })()}%</span>
               </div>
               <div style={{
                 width: '100%',
@@ -360,7 +367,14 @@ export default function Dashboard() {
                 overflow: 'hidden',
               }}>
                 <div style={{
-                  width: `${Math.max(0, Math.min(100, ingestProgress?.percent || 0))}%`,
+                  width: (() => {
+                    const ci = ingestProgress?.chunk_index
+                    const tc = ingestProgress?.total_chunks
+                    if (ci != null && tc != null && tc > 0) {
+                      return `${Math.min(100, Math.round((ci / tc) * 100))}%`
+                    }
+                    return `${Math.max(0, Math.min(100, ingestProgress?.percent || 0))}%`
+                  })(),
                   height: '100%',
                   background: 'linear-gradient(90deg, #2d6a1f 0%, #4a7c2a 100%)',
                   transition: 'width 0.35s ease',
