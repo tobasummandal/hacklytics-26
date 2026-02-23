@@ -28,18 +28,27 @@ async def who_is_present(text: str) -> list[str]:
         )).fetchall()
 
     known = [r["name"] for r in rows]
+    print(f"[who] known characters: {known}")
     if not known:
+        print("[who] no characters in db, skipping")
         return []
 
-    resp = await gemini.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=WHO_PROMPT.format(
-            characters=", ".join(known),
-            text=text,
-        ),
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0,
-        ),
-    )
-    return json.loads(resp.text).get("present", [])
+    print(f"[who] querying gemini for: {text[:80]}{'...' if len(text) > 80 else ''}")
+    try:
+        resp = await gemini.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=WHO_PROMPT.format(
+                characters=", ".join(known),
+                text=text,
+            ),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0,
+            ),
+        )
+        result = json.loads(resp.text).get("present", [])
+        print(f"[who] present: {result}")
+        return result
+    except Exception as e:
+        print(f"[who] gemini call FAILED: {type(e).__name__}: {e}")
+        raise
