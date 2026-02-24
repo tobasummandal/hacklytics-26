@@ -1,13 +1,32 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Network } from 'vis-network'
 import { DataSet } from 'vis-data'
-import { Loader, Network as NetworkIcon, Maximize2, Minimize2 } from 'lucide-react'
+import { Loader, Network as NetworkIcon, Maximize2, Minimize2, Search } from 'lucide-react'
 import { GraphData } from '../api/client'
 
 interface WorldGraphProps {
   data: GraphData | null
   loading: boolean
   graphHeight?: number
+}
+
+type VisNode = {
+  id: string
+  label: string
+  color: string
+  size: number
+  font: { color: string; size: number; face: string }
+}
+
+type VisEdge = {
+  id: string
+  from: string
+  to: string
+  label: string
+  font: { size: number; color: string; align: string }
+  color: { color: string; highlight: string }
+  arrows: string
+  smooth: { enabled: boolean; type: string; roundness: number }
 }
 
 const NODE_TYPES = [
@@ -20,20 +39,84 @@ const NODE_TYPES = [
   { color: '#16a34a', label: 'creature' },
 ]
 
+function neighborhoodIds(seedId: string, edges: { from_node: string; to_node: string }[], depth: number): Set<string> {
+  const adj = new Map<string, Set<string>>()
+  for (const e of edges) {
+    if (!adj.has(e.from_node)) adj.set(e.from_node, new Set())
+    if (!adj.has(e.to_node)) adj.set(e.to_node, new Set())
+    adj.get(e.from_node)!.add(e.to_node)
+    adj.get(e.to_node)!.add(e.from_node)
+  }
+
+  const visited = new Set<string>([seedId])
+  let frontier = new Set<string>([seedId])
+  for (let d = 0; d < depth; d++) {
+    const next = new Set<string>()
+    for (const id of frontier) {
+      for (const nb of adj.get(id) ?? []) {
+        if (!visited.has(nb)) {
+          visited.add(nb)
+          next.add(nb)
+        }
+      }
+    }
+    frontier = next
+    if (frontier.size === 0) break
+  }
+  return visited
+}
+
 export default function WorldGraph({ data, loading, graphHeight }: WorldGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const networkRef = useRef<Network | null>(null)
+  const dataSetsRef = useRef<{ nodes: DataSet<VisNode>; edges: DataSet<VisEdge> } | null>(null)
+  const prevCountRef = useRef<number>(0)
+
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null)
+  const [depth, setDepth] = useState<1 | 2 | 3>(2)
   const [activeTypes, setActiveTypes] = useState<Set<string>>(
     () => new Set(NODE_TYPES.map(t => t.label))
   )
+  const [activeEdgeTypes, setActiveEdgeTypes] = useState<Set<string>>(new Set())
+
+  const edgeTypes = useMemo(() => {
+    if (!data) return [] as string[]
+    return [...new Set(data.edges.map(e => e.label))].sort()
+  }, [data])
+
+  useEffect(() => {
+    if (edgeTypes.length === 0) return
+    setActiveEdgeTypes(prev => {
+      if (prev.size === 0) return new Set(edgeTypes)
+      const next = new Set<string>()
+      for (const t of edgeTypes) {
+        if (prev.has(t)) next.add(t)
+      }
+      if (next.size === 0) return new Set(edgeTypes)
+      return next
+    })
+  }, [edgeTypes])
 
   const toggleType = (label: string) => {
     setActiveTypes(prev => {
       const next = new Set(prev)
       if (next.has(label)) {
-        // Don't allow deselecting the last active type
+        if (next.size === 1) return prev
+        next.delete(label)
+      } else {
+        next.add(label)
+      }
+      return next
+    })
+  }
+
+  const toggleEdgeType = (label: string) => {
+    setActiveEdgeTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(label)) {
         if (next.size === 1) return prev
         next.delete(label)
       } else {
@@ -44,39 +127,11 @@ export default function WorldGraph({ data, loading, graphHeight }: WorldGraphPro
   }
 
   useEffect(() => {
-    if (!data || !containerRef.current || data.nodes.length === 0) return
+    if (!containerRef.current || networkRef.current) return
 
-    // Filter nodes by active types
-    const visibleNodes = data.nodes.filter(n => activeTypes.has(n.type))
-    const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
-
-    // Filter edges — both endpoints must be visible
-    const visibleEdges = data.edges.filter(
-      e => visibleNodeIds.has(e.from_node) && visibleNodeIds.has(e.to_node)
-    )
-
-    const nodes = new DataSet(
-      visibleNodes.map(n => ({
-        id: n.id,
-        label: n.label,
-        color: n.color,
-        size: n.size,
-        font: { color: '#2c2416', size: 12, face: 'Lora' }
-      }))
-    )
-
-    const edges = new DataSet(
-      visibleEdges.map((e, i) => ({
-        id: i,
-        from: e.from_node,
-        to: e.to_node,
-        label: e.label,
-        font: { size: 9, color: '#5a4a3a', align: 'middle' },
-        color: { color: '#e8e3d8', highlight: '#2d5016' },
-        arrows: 'to',
-        smooth: { enabled: true, type: 'continuous', roundness: 0.5 }
-      }))
-    )
+    const nodes = new DataSet<VisNode>([])
+    const edges = new DataSet<VisEdge>([])
+    dataSetsRef.current = { nodes, edges }
 
     const options = {
       autoResize: true,
@@ -84,34 +139,105 @@ export default function WorldGraph({ data, loading, graphHeight }: WorldGraphPro
       edges: { width: 0.5, smooth: { enabled: true, type: 'continuous', roundness: 0.5 } },
       physics: {
         stabilization: false,
-        barnesHut: { gravitationalConstant: -8000, springConstant: 0.001, springLength: 200 }
+        barnesHut: { gravitationalConstant: -8000, springConstant: 0.001, springLength: 200 },
       },
-      interaction: { hover: true, tooltipDelay: 100, hideEdgesOnDrag: true }
+      interaction: { hover: true, tooltipDelay: 100, hideEdgesOnDrag: true },
     }
 
-    if (networkRef.current) networkRef.current.destroy()
-    networkRef.current = new Network(containerRef.current, { nodes, edges }, options)
+    const network = new Network(containerRef.current, { nodes, edges }, options)
+    networkRef.current = network
 
-    return () => { if (networkRef.current) networkRef.current.destroy() }
-  }, [data, activeTypes])
+    const onClick = (params: { nodes?: string[] }) => {
+      const first = params.nodes && params.nodes[0]
+      if (first) setFocusNodeId(first)
+    }
+    network.on('click', onClick)
 
-  // Fluid resize: just redraw without rebuilding the network
+    return () => {
+      network.off('click', onClick)
+      if (networkRef.current) networkRef.current.destroy()
+      networkRef.current = null
+      dataSetsRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const ds = dataSetsRef.current
+    const network = networkRef.current
+    if (!ds || !network) return
+
+    if (!data || data.nodes.length === 0) {
+      ds.nodes.clear()
+      ds.edges.clear()
+      prevCountRef.current = 0
+      return
+    }
+
+    const typedNodes = data.nodes.filter(n => activeTypes.has(n.type))
+    const typedNodeIds = new Set(typedNodes.map(n => n.id))
+
+    let visibleEdges = data.edges.filter(
+      e => typedNodeIds.has(e.from_node) && typedNodeIds.has(e.to_node) && activeEdgeTypes.has(e.label)
+    )
+
+    let visibleNodes = typedNodes
+    if (focusNodeId && typedNodeIds.has(focusNodeId)) {
+      const keep = neighborhoodIds(focusNodeId, visibleEdges, depth)
+      visibleNodes = typedNodes.filter(n => keep.has(n.id))
+      const keepIds = new Set(visibleNodes.map(n => n.id))
+      visibleEdges = visibleEdges.filter(e => keepIds.has(e.from_node) && keepIds.has(e.to_node))
+    }
+
+    ds.nodes.clear()
+    ds.nodes.add(
+      visibleNodes.map(n => ({
+        id: n.id,
+        label: n.label,
+        color: n.color,
+        size: n.id === focusNodeId ? Math.max(24, n.size + 6) : n.size,
+        font: { color: '#2c2416', size: 12, face: 'Lora' },
+      }))
+    )
+
+    ds.edges.clear()
+    ds.edges.add(
+      visibleEdges.map((e) => ({
+        id: `${e.from_node}->${e.to_node}:${e.label}`,
+        from: e.from_node,
+        to: e.to_node,
+        label: e.label,
+        font: { size: 9, color: '#5a4a3a', align: 'middle' },
+        color: { color: '#e8e3d8', highlight: '#2d5016' },
+        arrows: 'to',
+        smooth: { enabled: true, type: 'continuous', roundness: 0.5 },
+      }))
+    )
+
+    const nextCount = visibleNodes.length + visibleEdges.length
+    const prevCount = prevCountRef.current
+    prevCountRef.current = nextCount
+    if (Math.abs(nextCount - prevCount) > 8) {
+      network.stabilize(80)
+      network.fit({ animation: { duration: 220, easingFunction: 'easeOutQuad' } })
+    } else {
+      network.redraw()
+    }
+  }, [data, activeTypes, activeEdgeTypes, focusNodeId, depth])
+
   useEffect(() => {
     if (networkRef.current) networkRef.current.redraw()
   }, [graphHeight])
 
-  // track fullscreen state changes (including Esc key which browser handles natively)
   useEffect(() => {
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement)
     document.addEventListener('fullscreenchange', onFsChange)
     return () => document.removeEventListener('fullscreenchange', onFsChange)
   }, [])
 
-  // any key press exits fullscreen
   useEffect(() => {
     if (!isFullscreen) return
-    const onKey = () => {
-      if (document.fullscreenElement) document.exitFullscreen()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && document.fullscreenElement) document.exitFullscreen()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -119,11 +245,27 @@ export default function WorldGraph({ data, loading, graphHeight }: WorldGraphPro
 
   const toggleFullscreen = () => {
     if (!wrapperRef.current) return
-    if (!document.fullscreenElement) {
-      wrapperRef.current.requestFullscreen()
-    } else {
-      document.exitFullscreen()
-    }
+    if (!document.fullscreenElement) wrapperRef.current.requestFullscreen()
+    else document.exitFullscreen()
+  }
+
+  const filteredSearchNodes = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q || !data) return []
+    return data.nodes
+      .filter(n => activeTypes.has(n.type) && n.label.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [searchQuery, data, activeTypes])
+
+  const focusNode = (nodeId: string) => {
+    setFocusNodeId(nodeId)
+    const network = networkRef.current
+    if (!network) return
+    network.selectNodes([nodeId])
+    network.focus(nodeId, {
+      scale: 1.25,
+      animation: { duration: 260, easingFunction: 'easeOutQuad' },
+    })
   }
 
   if (loading) {
@@ -162,51 +304,144 @@ export default function WorldGraph({ data, loading, graphHeight }: WorldGraphPro
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.75rem' }}>
         <h3 style={{
           fontSize: '1.25rem', fontWeight: 600,
-          color: 'var(--color-ink)', fontFamily: "'Crimson Text', serif"
+          color: 'var(--color-ink)', fontFamily: "'Crimson Text', serif",
         }}>world topology map</h3>
 
-        {/* Toggleable legend */}
-        <div className="flex flex-wrap gap-x-3 gap-y-1" style={{ fontSize: '0.75rem' }}>
-          {NODE_TYPES.map(({ color, label }) => {
-            const active = activeTypes.has(label)
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.35rem',
+            border: '1px solid var(--color-border)', borderRadius: '3px',
+            padding: '0.2rem 0.4rem', background: 'white',
+          }}>
+            <Search style={{ width: '0.8rem', height: '0.8rem', color: 'var(--color-ink-light)' }} />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="find node"
+              style={{ border: 'none', outline: 'none', fontSize: '0.75rem', width: '7rem', color: 'var(--color-ink)' }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.72rem', color: 'var(--color-ink-light)' }}>depth</span>
+        {[1, 2, 3].map(d => (
+          <button
+            key={d}
+            onClick={() => setDepth(d as 1 | 2 | 3)}
+            style={{
+              border: '1px solid var(--color-border)',
+              borderRadius: '999px',
+              background: depth === d ? 'var(--color-forest)' : 'white',
+              color: depth === d ? 'white' : 'var(--color-ink)',
+              padding: '0.1rem 0.5rem',
+              fontSize: '0.72rem',
+              cursor: 'pointer',
+            }}
+          >
+            {d}
+          </button>
+        ))}
+        {focusNodeId && (
+          <button
+            onClick={() => setFocusNodeId(null)}
+            style={{
+              border: '1px solid var(--color-border)',
+              borderRadius: '999px',
+              background: 'white',
+              color: 'var(--color-ink)',
+              padding: '0.1rem 0.5rem',
+              fontSize: '0.72rem',
+              cursor: 'pointer',
+            }}
+          >
+            clear focus
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-x-3 gap-y-1" style={{ fontSize: '0.75rem' }}>
+        {NODE_TYPES.map(({ color, label }) => {
+          const active = activeTypes.has(label)
+          return (
+            <button
+              key={label}
+              onClick={() => toggleType(label)}
+              title={active ? `hide ${label}s` : `show ${label}s`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                background: 'none', border: 'none', padding: '0.2rem 0.35rem',
+                borderRadius: '3px', cursor: 'pointer',
+                opacity: active ? 1 : 0.35,
+                transition: 'opacity 0.15s ease, background 0.15s ease',
+                outline: active ? `1px solid ${color}22` : 'none',
+              }}
+            >
+              <div style={{
+                width: '0.65rem', height: '0.65rem', borderRadius: '50%',
+                background: active ? color : '#9ca3af',
+                transition: 'background 0.15s ease', flexShrink: 0,
+              }} />
+              <span style={{
+                color: active ? 'var(--color-ink)' : 'var(--color-ink-light)',
+                transition: 'color 0.15s ease', userSelect: 'none',
+              }}>
+                {label}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {edgeTypes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+          {edgeTypes.slice(0, 20).map((t) => {
+            const active = activeEdgeTypes.has(t)
             return (
               <button
-                key={label}
-                onClick={() => toggleType(label)}
-                title={active ? `hide ${label}s` : `show ${label}s`}
+                key={t}
+                onClick={() => toggleEdgeType(t)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                  background: 'none', border: 'none', padding: '0.2rem 0.35rem',
-                  borderRadius: '3px', cursor: 'pointer',
-                  opacity: active ? 1 : 0.35,
-                  transition: 'opacity 0.15s ease, background 0.15s ease',
-                  outline: active ? `1px solid ${color}22` : 'none',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '999px',
+                  background: active ? '#eef4ea' : 'white',
+                  color: active ? 'var(--color-forest)' : 'var(--color-ink-light)',
+                  padding: '0.1rem 0.45rem',
+                  fontSize: '0.68rem',
+                  cursor: 'pointer',
                 }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLButtonElement).style.background = `${color}18`
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'none'
-                }}
+                title={active ? `hide ${t}` : `show ${t}`}
               >
-                <div style={{
-                  width: '0.65rem', height: '0.65rem', borderRadius: '50%',
-                  background: active ? color : '#9ca3af',
-                  transition: 'background 0.15s ease',
-                  flexShrink: 0,
-                }} />
-                <span style={{
-                  color: active ? 'var(--color-ink)' : 'var(--color-ink-light)',
-                  transition: 'color 0.15s ease',
-                  userSelect: 'none',
-                }}>
-                  {label}
-                </span>
+                {t}
               </button>
             )
           })}
         </div>
-      </div>
+      )}
+
+      {filteredSearchNodes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+          {filteredSearchNodes.map(n => (
+            <button
+              key={n.id}
+              onClick={() => focusNode(n.id)}
+              style={{
+                border: '1px solid var(--color-border)',
+                background: 'white',
+                borderRadius: '999px',
+                padding: '0.2rem 0.55rem',
+                fontSize: '0.7rem',
+                color: 'var(--color-ink)',
+                cursor: 'pointer',
+              }}
+              title={`focus ${n.label}`}
+            >
+              {n.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div
         ref={wrapperRef}
@@ -243,9 +478,9 @@ export default function WorldGraph({ data, loading, graphHeight }: WorldGraphPro
 
       <div style={{
         fontSize: '0.875rem', color: 'var(--color-ink-light)',
-        textAlign: 'center', fontStyle: 'italic'
+        textAlign: 'center', fontStyle: 'italic',
       }}>
-        nodes are entities · edges are relationships · click a type to toggle visibility
+        nodes are entities · edges are relationships · click a node to isolate neighborhood
       </div>
     </div>
   )

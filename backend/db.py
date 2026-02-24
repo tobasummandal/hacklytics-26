@@ -53,6 +53,20 @@ CREATE TABLE IF NOT EXISTS embedding_chunks (
     behavioral_summary TEXT NOT NULL,
     source_text        TEXT
 );
+
+CREATE TABLE IF NOT EXISTS ingest_jobs (
+    job_id      TEXT PRIMARY KEY,
+    payload     TEXT NOT NULL,
+    updated_at  REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
+CREATE INDEX IF NOT EXISTS idx_attributes_entity_type_value ON attributes(entity_id, type, value);
+CREATE INDEX IF NOT EXISTS idx_relationships_from_to_type ON relationships(from_id, to_id, type);
+CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(from_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(to_id);
+CREATE INDEX IF NOT EXISTS idx_embedding_chunks_entity_chapter ON embedding_chunks(entity_id, chapter);
+CREATE INDEX IF NOT EXISTS idx_ingest_jobs_updated_at ON ingest_jobs(updated_at);
 """
 
 

@@ -1,10 +1,12 @@
 import json
 import os
+import time
 
 from google import genai
 from google.genai import types
 
 import db
+from llm_log import debug_llm, log_gemini_usage
 
 gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
@@ -20,20 +22,39 @@ This includes characters referred to by pronoun, implication, or dialogue withou
 Return ONLY valid JSON: {{"present": ["Name1", "Name2"]}}
 If none are present, return {{"present": []}}"""
 
+KNOWN_CHAR_CACHE_TTL_SECONDS = 5.0
+_KNOWN_CHAR_CACHE: dict[str, object] = {"expires_at": 0.0, "names": []}
 
-async def who_is_present(text: str) -> list[str]:
+
+def clear_known_character_cache() -> None:
+    _KNOWN_CHAR_CACHE["expires_at"] = 0.0
+    _KNOWN_CHAR_CACHE["names"] = []
+
+
+async def _get_known_characters() -> list[str]:
+    now = time.time()
+    expires_at = float(_KNOWN_CHAR_CACHE.get("expires_at", 0.0))
+    if expires_at > now:
+        return list(_KNOWN_CHAR_CACHE.get("names", []))
+
     async with db.get_db() as conn:
         rows = await (await conn.execute(
             "SELECT name FROM entities WHERE type = 'character'"
         )).fetchall()
+    names = [r["name"] for r in rows]
+    _KNOWN_CHAR_CACHE["names"] = names
+    _KNOWN_CHAR_CACHE["expires_at"] = now + KNOWN_CHAR_CACHE_TTL_SECONDS
+    return names
 
-    known = [r["name"] for r in rows]
-    print(f"[who] known characters: {known}")
+
+async def who_is_present(text: str) -> list[str]:
+    known = await _get_known_characters()
+    debug_llm(f"[who] known characters: {known}")
     if not known:
-        print("[who] no characters in db, skipping")
+        debug_llm("[who] no characters in db, skipping")
         return []
 
-    print(f"[who] querying gemini for: {text[:80]}{'...' if len(text) > 80 else ''}")
+    debug_llm(f"[who] querying gemini for: {text[:80]}{'...' if len(text) > 80 else ''}")
     try:
         resp = await gemini.aio.models.generate_content(
             model="gemini-2.5-flash",
@@ -46,8 +67,9 @@ async def who_is_present(text: str) -> list[str]:
                 temperature=0,
             ),
         )
+        log_gemini_usage("who", resp)
         result = json.loads(resp.text).get("present", [])
-        print(f"[who] present: {result}")
+        debug_llm(f"[who] present: {result}")
         return result
     except Exception as e:
         print(f"[who] gemini call FAILED: {type(e).__name__}: {e}")

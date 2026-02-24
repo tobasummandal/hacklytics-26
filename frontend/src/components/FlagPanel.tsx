@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, AlertCircle, Info, Loader } from 'lucide-react'
 import { Flag } from '../api/client'
 
@@ -9,6 +9,14 @@ interface FlagPanelProps {
 
 export default function FlagPanel({ flags, checking }: FlagPanelProps) {
   const [showSuggestions, setShowSuggestions] = useState(true)
+  const [visibleCount, setVisibleCount] = useState(24)
+
+  const shownFlags = flags.slice(0, visibleCount)
+  const hiddenCount = Math.max(0, flags.length - shownFlags.length)
+
+  useEffect(() => {
+    setVisibleCount(24)
+  }, [flags.length])
 
   if (checking) {
     return (
@@ -81,8 +89,18 @@ export default function FlagPanel({ flags, checking }: FlagPanelProps) {
         </div>
       </div>
 
-      {flags.map((flag, idx) => (
-        <div key={idx} style={{ ...colors(flag.severity), borderRadius: '2px', padding: '0.65rem 0.85rem', marginBottom: '0.5rem' }}>
+      {shownFlags.map((flag, idx) => (
+        <div
+          key={idx}
+          className="fade-up"
+          style={{
+            ...colors(flag.severity),
+            borderRadius: '2px',
+            padding: '0.65rem 0.85rem',
+            marginBottom: '0.5rem',
+            animationDelay: `${Math.min(220, idx * 40)}ms`,
+          }}
+        >
           <div className="flex items-start space-x-3">
             {icon(flag.severity)}
             <div className="flex-1">
@@ -124,6 +142,25 @@ export default function FlagPanel({ flags, checking }: FlagPanelProps) {
           </div>
         </div>
       ))}
+
+      {hiddenCount > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.5rem' }}>
+          <button
+            onClick={() => setVisibleCount((v) => Math.min(flags.length, v + 24))}
+            style={{
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-paper)',
+              borderRadius: '999px',
+              padding: '0.35rem 0.8rem',
+              fontSize: '0.78rem',
+              color: 'var(--color-ink)',
+              cursor: 'pointer',
+            }}
+          >
+            show {Math.min(24, hiddenCount)} more ({hiddenCount} remaining)
+          </button>
+        </div>
+      )}
     </div>
   )
 }

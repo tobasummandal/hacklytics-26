@@ -1,8 +1,27 @@
 import axios from 'axios'
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = API_URL.replace(/\/+$/, '')
 
-const client = axios.create({ baseURL: API_URL, headers: { 'Content-Type': 'application/json' } })
+const client = axios.create({
+  baseURL: API_URL,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 15000,
+})
+
+client.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const cfg = error?.config as any
+    const status = error?.response?.status
+    const isTransient = !status || status >= 500
+    if (cfg && !cfg.__retried && isTransient) {
+      cfg.__retried = true
+      return client(cfg)
+    }
+    return Promise.reject(error)
+  }
+)
 
 export const api = {
   async startIngest(text: string, chapter: number) {
@@ -15,6 +34,27 @@ export const api = {
     return r.data as IngestJob
   },
 
+  ingestEventStream(
+    jobId: string,
+    handlers: {
+      onProgress: (job: IngestJob) => void
+      onDone: () => void
+      onError: (err: Event | string) => void
+    }
+  ) {
+    const es = new EventSource(`${API_BASE}/ingest/${jobId}/events`)
+    es.addEventListener('progress', (evt: MessageEvent) => {
+      try {
+        handlers.onProgress(JSON.parse(evt.data) as IngestJob)
+      } catch (e) {
+        handlers.onError(String(e))
+      }
+    })
+    es.addEventListener('done', () => handlers.onDone())
+    es.onerror = (evt) => handlers.onError(evt)
+    return () => es.close()
+  },
+
   async who(text: string): Promise<string[]> {
     const r = await client.post('/who', { text })
     return r.data.present
@@ -25,8 +65,19 @@ export const api = {
     return r.data.flags as Flag[]
   },
 
-  async getGraph() {
-    const r = await client.get('/graph')
+  async checkPassage(text: string, chapter: number, signal?: AbortSignal) {
+    const r = await client.post('/check-passage', { text, chapter }, { signal })
+    return r.data as { present: string[]; flags: Flag[] }
+  },
+
+  async getGraph(params?: { types?: string[]; q?: string; limit_nodes?: number; limit_edges?: number }) {
+    const query = {
+      ...(params?.types?.length ? { types: params.types.join(',') } : {}),
+      ...(params?.q ? { q: params.q } : {}),
+      ...(params?.limit_nodes ? { limit_nodes: params.limit_nodes } : {}),
+      ...(params?.limit_edges ? { limit_edges: params.limit_edges } : {}),
+    }
+    const r = await client.get('/graph', { params: query })
     return r.data as GraphData
   },
 
@@ -62,6 +113,12 @@ export interface GraphEdge {
 export interface GraphData {
   nodes: GraphNode[]
   edges: GraphEdge[]
+  meta?: {
+    total_nodes: number
+    total_edges: number
+    returned_nodes: number
+    returned_edges: number
+  }
 }
 
 export interface IngestTotals {

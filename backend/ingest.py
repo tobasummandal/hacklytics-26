@@ -7,6 +7,7 @@ from google import genai
 from google.genai import types
 
 import db
+from llm_log import debug_llm, log_gemini_usage
 
 gemini = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
@@ -131,7 +132,7 @@ def chunk_text(text: str, max_words: int = 150) -> list[str]:
 async def _extract(passage: str, prev_characters: list[str] | None = None) -> dict:
     prev_context = PREV_CONTEXT_BLOCK.format(prev_characters=", ".join(prev_characters)) if prev_characters else ""
     prompt = EXTRACTION_PROMPT.format(passage=passage, prev_context=prev_context)
-    print(f"\n[prompt]\n{prompt}\n[/prompt]")
+    debug_llm(f"\n[prompt]\n{prompt}\n[/prompt]")
     resp = await gemini.aio.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt,
@@ -140,7 +141,8 @@ async def _extract(passage: str, prev_characters: list[str] | None = None) -> di
             temperature=0,
         ),
     )
-    print(f"\n[llm response]\n{resp.text}\n[/llm response]")
+    debug_llm(f"\n[llm response]\n{resp.text}\n[/llm response]")
+    log_gemini_usage("ingest_extract", resp)
     return json.loads(resp.text)
 
 
@@ -149,6 +151,7 @@ async def _embed(texts: list[str]) -> list[list[float]]:
         model="models/gemini-embedding-001",
         contents=texts,
     )
+    log_gemini_usage("ingest_embed", resp)
     return [e.values for e in resp.embeddings]
 
 
