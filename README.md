@@ -7,6 +7,25 @@ AI-powered story consistency checker. Detects character contradictions in real t
 - Python 3.11+
 - Docker
 
+## One-command dev run
+
+From repo root:
+```bash
+./dev-up.sh
+```
+
+Stop everything:
+```bash
+./dev-down.sh
+```
+
+This starts:
+- VectorAI Docker container on `50051`
+- Backend API on `http://127.0.0.1:8000`
+- Frontend app on `http://127.0.0.1:5173`
+
+Logs are written to `.run/backend.log` and `.run/frontend.log`.
+
 ## Setup
 
 **1. Start the vector database**
