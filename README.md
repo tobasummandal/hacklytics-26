@@ -14,6 +14,11 @@ From repo root:
 ./dev-up.sh
 ```
 
+Start in background and return to your shell immediately:
+```bash
+./dev-up.sh --background
+```
+
 Stop everything:
 ```bash
 ./dev-down.sh

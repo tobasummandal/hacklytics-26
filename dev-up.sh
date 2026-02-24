@@ -13,6 +13,17 @@ FRONTEND_PORT=5173
 
 mkdir -p "$RUN_DIR"
 
+if [[ "${1:-}" == "--background" ]]; then
+  nohup "$0" --foreground >"$RUN_DIR/dev-up.log" 2>&1 &
+  echo "Started dev-up in background (PID $!)."
+  echo "Bootstrap log: $RUN_DIR/dev-up.log"
+  exit 0
+fi
+
+if [[ "${1:-}" == "--foreground" ]]; then
+  shift
+fi
+
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1"
@@ -66,7 +77,7 @@ start_backend() {
   echo "Starting backend on :$BACKEND_PORT ..."
   (
     cd "$BACKEND_DIR"
-    nohup "$BACKEND_DIR/venv/bin/uvicorn" main:app --host 0.0.0.0 --port "$BACKEND_PORT" >"$log_file" 2>&1 &
+    nohup "$BACKEND_DIR/venv/bin/uvicorn" main:app --host 0.0.0.0 --port "$BACKEND_PORT" < /dev/null >"$log_file" 2>&1 &
     echo $! >"$pid_file"
   )
 }
@@ -100,7 +111,7 @@ start_frontend() {
   echo "Starting frontend on :$FRONTEND_PORT ..."
   (
     cd "$FRONTEND_DIR"
-    nohup npm run dev -- --host 0.0.0.0 --port "$FRONTEND_PORT" >"$log_file" 2>&1 &
+    nohup npm run dev -- --host 0.0.0.0 --port "$FRONTEND_PORT" < /dev/null >"$log_file" 2>&1 &
     echo $! >"$pid_file"
   )
 }
@@ -120,12 +131,36 @@ wait_for_http() {
   echo "$label did not become ready in time."
 }
 
+wait_for_pid() {
+  local pid_file="$1"
+  local label="$2"
+
+  if [[ ! -f "$pid_file" ]]; then
+    echo "$label PID file missing."
+    return 1
+  fi
+
+  local pid
+  pid="$(cat "$pid_file")"
+  for _ in {1..20}; do
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  echo "$label process exited early. Check logs."
+  return 1
+}
+
 require_cmd curl
 
 ensure_vectorai
 start_backend
 start_frontend
 
+wait_for_pid "$RUN_DIR/backend.pid" "Backend"
+wait_for_pid "$RUN_DIR/frontend.pid" "Frontend"
 wait_for_http "http://127.0.0.1:$BACKEND_PORT/health" "Backend"
 wait_for_http "http://127.0.0.1:$FRONTEND_PORT" "Frontend"
 
