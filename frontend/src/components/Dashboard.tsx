@@ -19,11 +19,12 @@ const EDITOR_STYLE = {
   padding: '1.25rem 1.5rem',
 } as const
 
-function HighlightTextarea({ value, onChange, highlights, placeholder }: {
+function HighlightTextarea({ value, onChange, highlights, placeholder, containerStyle }: {
   value: string
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
   highlights: string[]
   placeholder?: string
+  containerStyle?: React.CSSProperties
 }) {
   const backdropRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -74,7 +75,7 @@ function HighlightTextarea({ value, onChange, highlights, placeholder }: {
   }
 
   return (
-    <div style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', minHeight: 0, overflow: 'hidden', ...containerStyle }}>
       {/* highlighted backdrop */}
       <div
         ref={backdropRef}
@@ -123,7 +124,9 @@ export default function Dashboard() {
   const [ingestProgress, setIngestProgress] = useState<IngestProgress | null>(null)
   const [ingestError, setIngestError] = useState<string | null>(null)
   const [checkError, setCheckError] = useState<string | null>(null)
+  const [graphSelectionHighlights, setGraphSelectionHighlights] = useState<string[]>([])
   const [graphHeight, setGraphHeight] = useState(GRAPH_DEFAULT_H)
+  const [isGraphResizing, setIsGraphResizing] = useState(false)
   const isDragging = useRef(false)
   const dragStartY = useRef(0)
   const dragStartH = useRef(0)
@@ -140,7 +143,11 @@ export default function Dashboard() {
   const lastIngestedLength = useRef(0)
   const lastCheckedTextRef = useRef('')
 
-  const highlights = flags.flatMap(f => f.conflicting_excerpts ?? [])
+  const inconsistencyHighlights = flags.flatMap(f => f.conflicting_excerpts ?? [])
+  const newWritingHighlights = useMemo(
+    () => [...inconsistencyHighlights, ...graphSelectionHighlights],
+    [inconsistencyHighlights, graphSelectionHighlights]
+  )
 
   const refreshGraph = useCallback(async () => {
     try {
@@ -167,6 +174,7 @@ export default function Dashboard() {
         return
       }
       setFlags(result.flags)
+      await refreshGraph()
       lastCheckedTextRef.current = normalized
     } catch (e: any) {
       if (e?.code === 'ERR_CANCELED') return
@@ -261,6 +269,7 @@ export default function Dashboard() {
       setIngestError(null)
       lastIngestedLength.current = 0
       setGraphData(null)
+      setGraphSelectionHighlights([])
     } catch (e) {
       console.error('[reset]', e)
     } finally {
@@ -300,6 +309,7 @@ export default function Dashboard() {
   const onDividerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId)
     isDragging.current = true
+    setIsGraphResizing(true)
     dragStartY.current = e.clientY
     dragStartH.current = graphHeight
   }
@@ -318,6 +328,7 @@ export default function Dashboard() {
   const onDividerPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.releasePointerCapture(e.pointerId)
     isDragging.current = false
+    setIsGraphResizing(false)
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current)
       rafRef.current = null
@@ -377,15 +388,12 @@ export default function Dashboard() {
         </div>
 
         {/* Story textarea */}
-        <textarea
+        <HighlightTextarea
           value={storyText}
           onChange={e => setStoryText(e.target.value)}
+          highlights={graphSelectionHighlights}
           placeholder="Paste your existing story here. Hit 'ingest' to build the knowledge graph."
-          style={{
-            flex: 2, resize: 'none', border: 'none', outline: 'none',
-            ...EDITOR_STYLE,
-            color: 'var(--color-ink)', background: 'var(--color-paper)', minHeight: 0,
-          }}
+          containerStyle={{ flex: 2 }}
         />
 
         {/* Status bar */}
@@ -487,8 +495,9 @@ export default function Dashboard() {
         <HighlightTextarea
           value={newText}
           onChange={handleNewTextChange}
-          highlights={highlights}
+          highlights={newWritingHighlights}
           placeholder="Write your new paragraph here. Hit 'check' to run consistency analysis."
+          containerStyle={{ flex: 1 }}
         />
         {checkError && (
           <div style={{
@@ -513,11 +522,17 @@ export default function Dashboard() {
           background: 'var(--color-paper)',
           padding: '1rem 1.5rem',
           overflow: 'hidden',
-          transition: 'height 0.02s linear',
+          transition: isGraphResizing ? 'none' : 'height 0.12s ease-out',
           boxSizing: 'border-box',
         }}>
           <Suspense fallback={<div style={{ color: 'var(--color-ink-light)', fontSize: '0.85rem' }}>loading graph...</div>}>
-            <WorldGraph data={graphData} loading={false} graphHeight={graphHeight} />
+            <WorldGraph
+              data={graphData}
+              loading={false}
+              graphHeight={graphHeight}
+              isResizing={isGraphResizing}
+              onSelectionHighlight={setGraphSelectionHighlights}
+            />
           </Suspense>
         </div>
 
