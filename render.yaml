@@ -1,0 +1,28 @@
+services:
+  - type: pserv
+    name: vectoraidb
+    env: docker
+    dockerfilePath: ./Dockerfile.vectorai
+    plan: starter
+    disk:
+      name: vectoraidb-data
+      mountPath: /data
+      sizeGB: 5
+
+  - type: web
+    name: archivist-backend
+    env: python
+    rootDir: backend
+    plan: starter
+    buildCommand: |
+      pip install -r requirements.txt
+      pip install ./actiancortex-0.1.0b1-py3-none-any.whl
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: VECTORAI_HOST
+        value: vectoraidb
+      - key: VECTORAI_PORT
+        value: "50051"
+      - key: GEMINI_API_KEY
+        sync: false

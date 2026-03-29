@@ -1,64 +1,91 @@
 import axios from 'axios'
-import { World, InconsistencyReport, LoopholeReport, CharacterProfile, GraphData } from '../types'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000'
 
-const client = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
+const client = axios.create({ baseURL: API_URL, headers: { 'Content-Type': 'application/json' } })
 
 export const api = {
-  async createWorld(name: string, description?: string): Promise<World> {
-    const response = await client.post('/worlds', { name, description })
-    return response.data
+  async startIngest(text: string, chapter: number) {
+    const r = await client.post('/ingest', { text, chapter })
+    return r.data as { job_id: string; status: 'queued' | 'running' | 'completed' | 'failed' }
   },
 
-  async getWorld(worldId: string): Promise<World> {
-    const response = await client.get(`/worlds/${worldId}`)
-    return response.data
+  async getIngestStatus(jobId: string) {
+    const r = await client.get(`/ingest/${jobId}`)
+    return r.data as IngestJob
   },
 
-  async uploadManuscript(worldId: string, file: File): Promise<void> {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    await client.post(`/worlds/${worldId}/upload`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+  async who(text: string): Promise<string[]> {
+    const r = await client.post('/who', { text })
+    return r.data.present
   },
 
-  async getInconsistencies(worldId: string): Promise<InconsistencyReport[]> {
-    const response = await client.get(`/worlds/${worldId}/inconsistencies`)
-    return response.data
+  async check(text: string, characters_present: string[], chapter: number) {
+    const r = await client.post('/check', { text, characters_present, chapter })
+    return r.data.flags as Flag[]
   },
 
-  async getLoopholes(worldId: string): Promise<LoopholeReport[]> {
-    const response = await client.get(`/worlds/${worldId}/loopholes`)
-    return response.data
+  async getGraph() {
+    const r = await client.get('/graph')
+    return r.data as GraphData
   },
 
-  async getCharacters(worldId: string): Promise<CharacterProfile[]> {
-    const response = await client.get(`/worlds/${worldId}/characters`)
-    return response.data
+  async reset() {
+    await client.delete('/reset')
   },
+}
 
-  async getWorldGraph(worldId: string): Promise<GraphData> {
-    const response = await client.get(`/worlds/${worldId}/graph`)
-    return response.data
-  },
+export interface Flag {
+  character: string
+  issue: string
+  severity: 'high' | 'medium' | 'low'
+  evidence: string
+  suggestion: string
+  conflicting_excerpts: string[]
+}
 
-  async queryWorld(worldId: string, query: string): Promise<any> {
-    const response = await client.post(`/worlds/${worldId}/query`, {
-      world_id: worldId,
-      query,
-    })
-    return response.data
-  },
+export interface GraphNode {
+  id: string
+  label: string
+  type: string
+  color: string
+  size: number
+}
+
+export interface GraphEdge {
+  from_node: string
+  to_node: string
+  label: string
+  weight: number
+}
+
+export interface GraphData {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+}
+
+export interface IngestTotals {
+  entities: number
+  attributes: number
+  relationships: number
+  embedding_chunks: number
+}
+
+export interface IngestProgress {
+  percent: number
+  phase: string
+  message: string
+  chunk_index?: number
+  total_chunks?: number
+  totals?: IngestTotals
+}
+
+export interface IngestJob {
+  job_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  progress?: IngestProgress
+  result?: IngestTotals
+  error?: { code?: string; message?: string; retry_after_seconds?: number }
 }
 
 export default client

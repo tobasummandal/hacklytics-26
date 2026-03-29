@@ -49,7 +49,15 @@ Thumbs.db
 # Uploads
 uploads/
 *.docx
-*.txt
 
 # Docker
 docker-compose.override.yml
+
+# Database
+backend/story.db
+backend/story.db-shm
+backend/story.db-wal
+backend/actiancortex*.whl
+
+# Runtime
+.run/
